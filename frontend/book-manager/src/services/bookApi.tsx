@@ -6,16 +6,19 @@ const API_URL = 'http://localhost:5137/api'; // Adjust port to match your .NET A
 export const bookApi = {
   getAll: async (): Promise<Book[]> => {
     const response = await axios.get<Book[]>(`${API_URL}/books`);
+    console.log(response.data);
     return response.data;
   },
 
   getById: async (id: number): Promise<Book> => {
     const response = await axios.get<Book>(`${API_URL}/books/${id}`);
+    console.log(response.data);
     return response.data;
   },
 
   create: async (book: Book): Promise<Book> => {
     const response = await axios.post<Book>(`${API_URL}/books`, book);
+    console.log(response.data);
     return response.data;
   },
 
@@ -24,7 +27,7 @@ export const bookApi = {
   },
 
   updateAvailability: async (id: number, isAvailable: boolean): Promise<void> => {
-    await axios.patch(`${API_URL}/books/${id}/availability`, isAvailable);
+    await axios.patch(`${API_URL}/books/${id}/availability?isAvailable=${isAvailable}`);
   },
 
   delete: async (id: number): Promise<void> => {
