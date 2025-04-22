@@ -1,0 +1,49 @@
+@BookAPI_HostAddress = http://localhost:5137
+
+###
+GET {{BookAPI_HostAddress}}/HelloWorld
+Accept: text/plain
+###
+GET {{BookAPI_HostAddress}}/api/books
+Accept: application/json
+###
+
+@getId=3
+GET {{BookAPI_HostAddress}}/api/books/{{getId}}
+Accept: application/json
+###
+POST {{BookAPI_HostAddress}}/api/books
+content-type: application/json
+
+{
+  "id": 0,
+  "title": "Lord of the Rings",
+  "author": "JRR Tolkien",
+  "year": 1953,
+  "genre": "Fantasy, Function",
+  "isAvailable": true
+}
+###
+
+@updateId=4
+PUT {{BookAPI_HostAddress}}/api/books/{{updateId}}
+Content-Type: application/json
+
+{
+  "id": 0,
+  "title": "Lord of the Rings",
+  "author": "JRR Tolkien",
+  "year": 1953,
+  "genre": "Fantasy, Fiction",
+  "isAvailable": false
+}
+###
+
+@availableId=2
+@title= Harry Potter
+@availability=true
+PATCH {{BookAPI_HostAddress}}/api/books/{{availableId}}/availability?isAvailable={{availability}}
+
+###
+@deleteId=2
+DELETE {{BookAPI_HostAddress}}/api/books/{{deleteId}}
