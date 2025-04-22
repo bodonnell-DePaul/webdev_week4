@@ -1,0 +1,33 @@
+import axios from 'axios';
+import Book from '../types/Book';
+
+const API_URL = 'https://localhost:7210/api'; // Adjust port to match your .NET API
+
+export const bookApi = {
+  getAll: async (): Promise<Book[]> => {
+    const response = await axios.get<Book[]>(`${API_URL}/books`);
+    return response.data;
+  },
+
+  getById: async (id: number): Promise<Book> => {
+    const response = await axios.get<Book>(`${API_URL}/books/${id}`);
+    return response.data;
+  },
+
+  create: async (book: Book): Promise<Book> => {
+    const response = await axios.post<Book>(`${API_URL}/books`, book);
+    return response.data;
+  },
+
+  update: async (id: number, book: Book): Promise<void> => {
+    await axios.put(`${API_URL}/books/${id}`, book);
+  },
+
+  updateAvailability: async (id: number, isAvailable: boolean): Promise<void> => {
+    await axios.patch(`${API_URL}/books/${id}/availability`, isAvailable);
+  },
+
+  delete: async (id: number): Promise<void> => {
+    await axios.delete(`${API_URL}/books/${id}`);
+  }
+};
