@@ -1,7 +1,7 @@
 import axios from 'axios';
 import Book from '../types/Book';
 
-const API_URL = 'https://localhost:7210/api'; // Adjust port to match your .NET API
+const API_URL = 'http://localhost:5137/api'; // Adjust port to match your .NET API
 
 export const bookApi = {
   getAll: async (): Promise<Book[]> => {
