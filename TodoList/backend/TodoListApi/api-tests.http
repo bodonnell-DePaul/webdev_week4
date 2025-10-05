@@ -1,0 +1,88 @@
+### TodoList API Test Collection
+### Base URL
+@baseUrl = http://localhost:5001
+@contentType = application/json
+
+### Health Check
+GET {{baseUrl}}/health
+
+### Get all todos
+GET {{baseUrl}}/api/todos
+
+### Get todo by ID
+GET {{baseUrl}}/api/todos/1
+
+### Create new todo
+POST {{baseUrl}}/api/todos
+Content-Type: {{contentType}}
+
+{
+  "title": "Learn .NET 8 Minimal APIs",
+  "description": "Study and implement .NET 8 Minimal APIs for the TodoList project",
+  "priority": "High",
+  "category": "Learning",
+  "dueDate": "2024-10-20T00:00:00Z",
+  "tags": ["dotnet", "api", "learning"]
+}
+
+### Update todo
+PUT {{baseUrl}}/api/todos/1
+Content-Type: {{contentType}}
+
+{
+  "title": "Complete project proposal - UPDATED",
+  "description": "Write and submit the final project proposal for CSC436 - Updated version",
+  "priority": "Urgent",
+  "category": "Academic",
+  "isCompleted": false,
+  "dueDate": "2024-10-15T00:00:00Z",
+  "tags": ["project", "academic", "deadline", "updated"]
+}
+
+### Toggle todo completion
+PATCH {{baseUrl}}/api/todos/2/toggle
+
+### Delete todo
+DELETE {{baseUrl}}/api/todos/1
+
+### Get all categories
+GET {{baseUrl}}/api/categories
+
+### Get category by ID
+GET {{baseUrl}}/api/categories/1
+
+### Create new category
+POST {{baseUrl}}/api/categories
+Content-Type: {{contentType}}
+
+{
+  "name": "Development",
+  "description": "Software development and programming tasks",
+  "color": "#22c55e"
+}
+
+### Update category
+PUT {{baseUrl}}/api/categories/1
+Content-Type: {{contentType}}
+
+{
+  "name": "Academic - Updated",
+  "description": "School and university related tasks - Updated",
+  "color": "#1d4ed8"
+}
+
+### Delete category
+DELETE {{baseUrl}}/api/categories/1
+
+### Get statistics
+GET {{baseUrl}}/api/stats
+
+### Test CORS (from React app perspective)
+GET {{baseUrl}}/api/todos
+Origin: http://localhost:5173
+
+### Test invalid endpoint (404)
+GET {{baseUrl}}/api/invalid
+
+### Test invalid todo ID
+GET {{baseUrl}}/api/todos/invalid-id

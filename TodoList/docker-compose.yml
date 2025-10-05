@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # .NET API Backend
+  todolist-api:
+    build: 
+      context: ./backend/TodoListApi
+      dockerfile: Dockerfile
+    ports:
+      - "5001:80"
+      - "7001:443"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=https://+:443;http://+:80
+      - ASPNETCORE_HTTPS_PORT=7001
+    volumes:
+      - ~/.aspnet/https:/https:ro
+    networks:
+      - todolist-network
+
+  # React Frontend (would need to be built separately)
+  # todolist-frontend:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.frontend
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - REACT_APP_API_URL=https://todolist-api:443
+  #   depends_on:
+  #     - todolist-api
+  #   networks:
+  #     - todolist-network
+
+networks:
+  todolist-network:
+    driver: bridge
+
+volumes:
+  https-certs:
