@@ -1,1910 +1,400 @@
-# Web Development Week 4: .NET APIs and React Integration
+# Week 4: Persistence, Data Design, and Application State
 
-## Introduction to .NET APIs and React Integration
-
-This document provides an introduction to building full-stack applications using .NET Minimal APIs and React with TypeScript, demonstrated through a comprehensive TodoList application.
-
-## C# and Java Comparison
-
-### Language Similarities
-| Feature | C# | Java |
-|---------|-----|------|
-| Type System | Static, strong typing | Static, strong typing |
-| Syntax | Curly brace syntax | Curly brace syntax |
-| Memory Management | Garbage collected | Garbage collected |
-| OOP Support | Classes, interfaces, inheritance | Classes, interfaces, inheritance |
-| Platform | Cross-platform via .NET | Cross-platform via JVM |
-
-### Key Differences
-- **Syntax Sugar**: C# offers more modern features like properties, LINQ, nullable reference types, and pattern matching
-- **Value Types**: C# has structs and value types for better memory performance and reduced GC pressure
-- **Generics**: C# generics are fully preserved at runtime (reification) with better type safety
-- **Lambdas/Delegates**: More first-class functional programming support in C#
-- **Async/Await**: Native async/await support in C# vs CompletableFuture/reactive streams in Java
-- **Properties**: C# has native property syntax vs Java's getter/setter methods
-- **LINQ**: Language Integrated Query provides SQL-like syntax for data operations
-
-### Enhanced Data Structure Comparison
-```csharp
-// C# List with collection initializers and LINQ
-List<string> csharpList = new List<string> { "apple", "banana", "orange" };
-csharpList.Add("grape");
-var firstItem = csharpList.First();
-var filtered = csharpList.Where(f => f.StartsWith("a")).ToList();
-
-// C# Dictionary with object initializer syntax
-Dictionary<string, int> csharpDict = new()
-{
-    { "apple", 1 },
-    { "banana", 2 },
-    ["orange"] = 3  // Index initializer syntax
-};
-
-// C# Record types for immutable data
-public record FruitRecord(string Name, int Count, decimal Price);
-var apple = new FruitRecord("Apple", 5, 1.99m);
-```
-
-```java
-// Java List with streams for functional operations
-List<String> javaList = new ArrayList<>();
-javaList.add("apple");
-javaList.add("banana");
-javaList.add("orange");
-String firstItem = javaList.get(0);
-List<String> filtered = javaList.stream()
-    .filter(f -> f.startsWith("a"))
-    .collect(Collectors.toList());
-
-// Java Map
-Map<String, Integer> javaMap = new HashMap<>();
-javaMap.put("apple", 1);
-javaMap.put("banana", 2);
-javaMap.put("orange", 3);
-
-// Java Record (Java 14+) for immutable data
-public record FruitRecord(String name, int count, BigDecimal price) {}
-var apple = new FruitRecord("Apple", 5, new BigDecimal("1.99"));
-```
-
-## HTTP Verbs for Web APIs
-
-Understanding REST API design principles is crucial for building maintainable web services:
-
-| Verb | Description | TodoList Example | Idempotent | Safe |
-|------|-------------|------------------|------------|------|
-| **GET** | Retrieve data without modifying resources | Get all todos: `GET /api/todos` | ✅ | ✅ |
-| **POST** | Create new resources or trigger operations | Create todo: `POST /api/todos` | ❌ | ❌ |
-| **PUT** | Replace an existing resource entirely | Update todo: `PUT /api/todos/{id}` | ✅ | ❌ |
-| **PATCH** | Partially update an existing resource | Mark complete: `PATCH /api/todos/{id}/complete` | ✅ | ❌ |
-| **DELETE** | Remove a resource | Delete todo: `DELETE /api/todos/{id}` | ✅ | ❌ |
-| **OPTIONS** | Get information about available communication options | Check allowed methods on todos endpoint | ✅ | ✅ |
-| **HEAD** | Same as GET but returns only headers without body | Check if todo exists without downloading data | ✅ | ✅ |
-
-### REST API Design Best Practices
-- Use nouns for resource endpoints (`/todos` not `/getTodos`)
-- Use HTTP status codes appropriately (200, 201, 404, 500, etc.)
-- Version your APIs (`/api/v1/todos`)
-- Implement proper error handling with consistent error response format
-- Use query parameters for filtering, sorting, and pagination
-
-## Building a TodoList Management Application
-
-This section demonstrates building a full-stack TodoList application using .NET 8 Minimal APIs and React with TypeScript.
-
-### Architecture Overview
-
-**Frontend (React + TypeScript)**
-- Framework: React 18 with TypeScript for type safety
-- State Management: React Context API for global state
-- Routing: React Router v6 for navigation
-- API Communication: Axios for HTTP requests with interceptors
-- UI: Modern responsive CSS with component-based styling
-
-**Backend (.NET 8 Minimal API)**
-- Framework: .NET 8 with Minimal APIs for lightweight, high-performance APIs
-- Data Storage: In-memory storage with service layer abstraction
-- Documentation: Swagger/OpenAPI for API documentation
-- CORS: Configured for cross-origin requests from React frontend
-- Validation: Data annotations and custom validation logic
-
-### Step 1: Understanding the .NET Minimal API Structure
-
-The TodoList backend uses .NET 8 Minimal APIs with a clean architecture:
-
-```csharp
-// TodoList/backend/TodoListApi/Program.cs
-using Microsoft.AspNetCore.Mvc;
-using TodoListApi.DTOs;
-using TodoListApi.Models;
-using TodoListApi.Services;
-
-var builder = WebApplication.CreateBuilder(args);
-
-// Add services to the container
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen(c =>
-{
-    c.SwaggerDoc("v1", new() { 
-        Title = "TodoList API", 
-        Version = "v1",
-        Description = "A comprehensive TodoList API built with .NET 8 Minimal APIs"
-    });
-});
-
-// Add CORS with multiple origins for development
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowReactApp", policy =>
-    {
-        policy.WithOrigins("http://localhost:5173", "http://localhost:5174", "http://localhost:3000")
-              .AllowAnyHeader()
-              .AllowAnyMethod();
-    });
-});
-
-// Register services with dependency injection
-builder.Services.AddSingleton<ICategoryService, InMemoryCategoryService>();
-builder.Services.AddSingleton<ITodoService, InMemoryTodoService>();
-
-var app = builder.Build();
-
-// Configure the HTTP request pipeline
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
-    {
-        c.SwaggerEndpoint("/swagger/v1/swagger.json", "TodoList API v1");
-        c.RoutePrefix = string.Empty; // Serve Swagger UI at root
-    });
-}
-
-app.UseHttpsRedirection();
-app.UseCors("AllowReactApp");
-
-// Todo API Endpoints using route groups for organization
-var todosGroup = app.MapGroup("/api/todos")
-    .WithTags("Todos")
-    .WithOpenApi();
-
-// GET /api/todos - Get all todos
-todosGroup.MapGet("/", async (ITodoService todoService) =>
-{
-    var todos = await todoService.GetAllTodosAsync();
-    var response = todos.Select(t => new TodoResponse
-    {
-        Id = t.Id,
-        Title = t.Title,
-        Description = t.Description,
-        Priority = t.Priority.ToString(),
-        Category = t.Category,
-        IsCompleted = t.IsCompleted,
-        CreatedDate = t.CreatedDate,
-        DueDate = t.DueDate,
-        Tags = t.Tags
-    });
-    return Results.Ok(response);
-})
-.WithName("GetAllTodos")
-.WithSummary("Get all todos")
-.WithDescription("Retrieves all todos from the system");
-
-// POST /api/todos - Create a new todo
-todosGroup.MapPost("/", async ([FromBody] CreateTodoRequest request, ITodoService todoService) =>
-{
-    var todo = new Todo
-    {
-        Title = request.Title,
-        Description = request.Description,
-        Priority = request.Priority,
-        Category = request.Category,
-        DueDate = request.DueDate,
-        Tags = request.Tags
-    };
-    
-    var createdTodo = await todoService.CreateTodoAsync(todo);
-    return Results.Created($"/api/todos/{createdTodo.Id}", createdTodo);
-})
-.WithName("CreateTodo")
-.WithSummary("Create a new todo");
-
-app.Run();
-```
-
-### Step 2: Understanding the Todo Model Structure
-
-The TodoList uses a comprehensive model with priority levels and categories:
-
-```csharp
-// TodoList/backend/TodoListApi/Models/TodoModels.cs
-public class Todo
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    
-    [Required]
-    [StringLength(200)]
-    public string Title { get; set; } = string.Empty;
-    
-    [StringLength(1000)]
-    public string Description { get; set; } = string.Empty;
-    
-    [Required]
-    public Priority Priority { get; set; } = Priority.Medium;
-    
-    [Required]
-    [StringLength(100)]
-    public string Category { get; set; } = string.Empty;
-    
-    public bool IsCompleted { get; set; } = false;
-    
-    public DateTime CreatedDate { get; set; } = DateTime.UtcNow;
-    
-    public DateTime? DueDate { get; set; }
-    
-    public List<string> Tags { get; set; } = new();
-}
-
-public enum Priority
-{
-    Low = 1,
-    Medium = 2,
-    High = 3,
-    Urgent = 4
-}
-
-public class Category
-{
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    
-    [Required]
-    [StringLength(100)]
-    public string Name { get; set; } = string.Empty;
-    
-    [StringLength(500)]
-    public string Description { get; set; } = string.Empty;
-    
-    [Required]
-    [StringLength(7)]
-    public string Color { get; set; } = "#007bff";
-}
-```
-
-### Step 3: Service Layer Architecture
-
-The TodoList implements a clean service layer pattern for better testability and separation of concerns:
-
-```csharp
-// TodoList/backend/TodoListApi/Services/TodoServices.cs
-public interface ITodoService
-{
-    Task<IEnumerable<Todo>> GetAllTodosAsync();
-    Task<Todo?> GetTodoByIdAsync(string id);
-    Task<Todo> CreateTodoAsync(Todo todo);
-    Task<Todo?> UpdateTodoAsync(string id, Todo todo);
-    Task<bool> DeleteTodoAsync(string id);
-    Task<TodoStats> GetTodoStatsAsync();
-}
-
-public class InMemoryTodoService : ITodoService
-{
-    private readonly List<Todo> _todos = new();
-    
-    public async Task<IEnumerable<Todo>> GetAllTodosAsync()
-    {
-        return await Task.FromResult(_todos.AsEnumerable());
-    }
-    
-    public async Task<Todo> CreateTodoAsync(Todo todo)
-    {
-        _todos.Add(todo);
-        return await Task.FromResult(todo);
-    }
-    
-    // Additional methods implementation...
-}
-```
-
-### Step 4: Create a React App with Vite
-
-The TodoList frontend is built with React 18 and TypeScript for better development experience:
-
-```bash
-# Create React app with Vite and TypeScript template
-npm create vite@latest todolist-frontend -- --template react-ts
-cd todolist-frontend
-npm install
-npm install axios react-router-dom
-```
-
-### Project Structure
-```
-TodoList/frontend/
-├── src/
-│   ├── components/
-│   │   └── layout/
-│   │       ├── Layout.tsx          # Main layout wrapper
-│   │       └── Navigation.tsx      # Navigation component
-│   ├── context/
-│   │   └── TodoContext.tsx         # Global state management
-│   ├── hooks/
-│   │   ├── useLocalStorage.ts      # Local storage hook
-│   │   ├── usePageTitle.ts         # Dynamic page titles
-│   │   ├── useTodoFilter.ts        # Todo filtering logic
-│   │   └── useTodoStats.ts         # Statistics calculations
-│   ├── pages/
-│   │   ├── HomePage.tsx            # Dashboard with statistics
-│   │   ├── TodosPage.tsx           # Todo management page
-│   │   ├── CategoriesPage.tsx      # Category management
-│   │   ├── AboutPage.tsx           # About page
-│   │   └── NotFoundPage.tsx        # 404 page
-│   ├── services/
-│   │   └── api.ts                  # API service layer
-│   ├── types/
-│   │   ├── index.ts               # Type exports
-│   │   └── Todo.ts                # Todo-related types
-│   └── utils/
-│       └── apiTest.ts             # API connection testing
-```
-# Why Use Axios Instead of JavaScript's Fetch API
-
-While the native `fetch` API is built into modern browsers, Axios offers several advantages that make it a popular choice for HTTP requests in React applications. The TodoList application demonstrates these benefits in practice.
-
-## Advantages of Axios over Fetch
-
-### 1. Automatic JSON Parsing
-- **Axios**: Automatically transforms JSON data with proper typing
-  ```typescript
-  // TodoList API service using Axios
-  const response = await axios.get<TodoResponse[]>('/api/todos');
-  console.log(response.data); // Already parsed as TodoResponse[]
-  ```
-  
-- **Fetch**: Requires manual JSON parsing and type assertions
-  ```typescript
-  // Fetch equivalent
-  const response = await fetch('/api/todos');
-  const data = await response.json() as TodoResponse[]; // Extra step + manual typing
-  ```
-
-### 2. Enhanced Error Handling
-- **Axios**: Rejects promises on HTTP error status (4xx/5xx) with detailed error information
-  ```typescript
-  // TodoList error handling with Axios
-  try {
-    const response = await axios.get('/api/todos');
-    return response.data;
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      console.error('API Error:', error.response?.status, error.response?.data);
-      throw new Error(`Failed to fetch todos: ${error.response?.data?.message}`);
-    }
-  }
-  ```
-  
-- **Fetch**: Considers HTTP error responses as resolved promises
-  ```typescript
-  // Fetch error handling (more verbose)
-  const response = await fetch('/api/todos');
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(`HTTP ${response.status}: ${errorData.message}`);
-  }
-  ```
-
-### 3. Request/Response Interception
-The TodoList uses Axios interceptors for consistent error handling and request logging:
-
-```typescript
-// TodoList API service with interceptors
-axios.interceptors.request.use(
-  (config) => {
-    console.log(`Making ${config.method?.toUpperCase()} request to ${config.url}`);
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-axios.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API call failed:', error.response?.data);
-    return Promise.reject(error);
-  }
-);
-```
-
-### 4. Built-in Request Cancellation
-- **Axios**: Simplified cancellation with AbortController integration
-  ```typescript
-  const controller = new AbortController();
-  const todoData = await axios.get('/api/todos', {
-    signal: controller.signal
-  });
-  
-  // Cancel if component unmounts
-  useEffect(() => {
-    return () => controller.abort();
-  }, []);
-  ```
-
-### 5. TypeScript Integration
-Axios provides excellent TypeScript support with generic types:
-
-```typescript
-// TodoList typed API calls
-interface TodoResponse {
-  id: string;
-  title: string;
-  priority: string;
-  // ... other properties
-}
-
-const createTodo = async (todo: CreateTodoRequest): Promise<TodoResponse> => {
-  const response = await axios.post<TodoResponse>('/api/todos', todo);
-  return response.data; // Properly typed as TodoResponse
-};
-```
-
-### 6. Consistent Configuration
-The TodoList API service demonstrates centralized configuration:
-
-```typescript
-// TodoList API configuration
-const API_BASE_URL = 'http://localhost:5001/api';
-
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-```
-
-### 7. Advanced Features
-- **Progress tracking**: For file uploads (useful for future attachments feature)
-- **Request retries**: Built-in retry mechanisms
-- **Concurrent requests**: Built-in support for Promise.all scenarios
-
-## When to Consider Fetch
-
-- **Minimal dependencies**: When bundle size is critical
-- **Simple use cases**: Basic GET/POST requests without complex error handling
-- **Native browser features**: When you need direct access to Response objects
-
-## TodoList Implementation Choice
-
-The TodoList application uses Axios because it provides:
-- Type-safe API calls with proper error handling
-- Centralized configuration for the API base URL
-- Consistent error handling across all components
-- Better developer experience with automatic JSON parsing
-- Future-ready architecture for features like authentication tokens and request retry logic
+**CSC 436 - Web Applications - DePaul University**
 
 ---
 
-### Step 5: Create Todo Types in React
+## Teaching Frame
 
-The TodoList uses comprehensive TypeScript interfaces for type safety:
+Weeks 1-3 gave students the foundations for building an interactive web application:
 
-```typescript
-// TodoList/frontend/src/types/Todo.ts
-export interface Todo {
-  id: string;
-  title: string;
-  description: string;
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  category: string;
-  isCompleted: boolean;
-  createdDate: Date;
-  dueDate?: Date;
-  tags: string[];
-}
+- Week 1: HTML, CSS, JavaScript, tooling, and the AI-assisted development loop.
+- Week 2: React components, props, state, and client-side architecture.
+- Week 3: HTTP, REST, APIs, request pipelines, CORS, and backend services.
 
-export interface Category {
-  id: string;
-  name: string;
-  description: string;
-  color: string;
-  todoCount: number;
-}
+Week 4 adds the idea that web applications need durable memory. Up to this point, an app can respond to users and update the screen, but its knowledge disappears when the page refreshes or the server restarts. Persistence changes the architecture. The application now has to protect data, model relationships, preserve history, handle concurrent use, and treat the database as a long-lived part of the system rather than a temporary variable in memory.
 
-export interface TodoStats {
-  totalTodos: number;
-  completedTodos: number;
-  pendingTodos: number;
-  totalCategories: number;
-  todosByCategory: Record<string, number>;
-  todosByPriority: Record<string, number>;
-  overdueTodos: number;
-}
+The central message for students:
 
-export interface FilterOptions {
-  searchQuery: string;
-  category: string;
-  priority: string;
-  isCompleted?: boolean;
-  sortBy: 'title' | 'priority' | 'dueDate' | 'createdDate';
-  sortOrder: 'asc' | 'desc';
-}
+> AI can generate database code quickly, but developers must design the data model, understand the system boundaries, and review the generated implementation against architectural constraints.
 
-export type Priority = 'low' | 'medium' | 'high' | 'urgent';
+---
+
+## The Big Shift: From Temporary State to Durable State
+
+In early web apps, students often keep data in arrays, component state, or simple variables on the server. That is useful for learning, but it has architectural limits.
+
+Temporary state answers questions like:
+
+- What is the user typing into this form right now?
+- Which tab is selected?
+- Is the cart drawer open?
+- What data did this component fetch for the current page?
+
+Durable state answers different questions:
+
+- What products, projects, users, or orders exist in the system?
+- Who owns each record?
+- Which records are related to each other?
+- What must remain true even if a request fails halfway through?
+- What data must still exist tomorrow?
+
+The design problem is deciding where each kind of state belongs.
+
+| Kind of state | Typical home | Design question |
+| --- | --- | --- |
+| UI state | React component state or reducer | Does this only affect the current screen? |
+| Shared client state | React Context, reducer, or a state library | Do many components need the same current value? |
+| Server state | API responses cached by the client | Did this come from another system of record? |
+| Durable domain state | Database | Must this survive reloads, restarts, and multiple users? |
+
+Students should learn to ask: "If this value disappeared, would the application lose user work, business history, or system integrity?" If yes, it probably belongs in persistent storage.
+
+---
+
+## Full-Stack Architecture With Persistence
+
+A persisted web application has several cooperating layers:
+
+```text
+Browser UI
+  React components, forms, local state, client-side validation
+
+HTTP API
+  REST resources, status codes, request validation, authentication boundary
+
+Application logic
+  Business rules, transactions, permissions, workflow decisions
+
+Persistence layer
+  ORM or query layer, migrations, database connection management
+
+Database
+  Tables/documents, relationships, constraints, indexes, stored durable state
 ```
 
-### Step 6: Create API Service Layer
-
-The TodoList implements a comprehensive API service with proper error handling:
-
-```typescript
-// TodoList/frontend/src/services/api.ts
-import axios from 'axios';
-import { Todo, Category, Priority } from '../types';
-
-const API_BASE_URL = 'http://localhost:5001/api';
-
-// Response interfaces matching the backend DTOs
-interface TodoResponse {
-  id: string;
-  title: string;
-  description: string;
-  priority: string;
-  category: string;
-  isCompleted: boolean;
-  createdDate: string;
-  dueDate?: string;
-  tags: string[];
-}
-
-// Request interfaces for creating/updating
-interface CreateTodoRequest {
-  title: string;
-  description: string;
-  priority: Priority;
-  category: string;
-  dueDate?: string;
-  tags: string[];
-}
-
-// Configure Axios instance with interceptors
-const apiClient = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 10000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
-
-// Request interceptor for logging
-apiClient.interceptors.request.use(
-  (config) => {
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
-    return config;
-  },
-  (error) => Promise.reject(error)
-);
-
-// Response interceptor for error handling
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error('API Error:', error.response?.data || error.message);
-    return Promise.reject(error);
-  }
-);
-
-// Todo API service
-export const todoApi = {
-  // Get all todos
-  getAll: async (): Promise<Todo[]> => {
-    const response = await apiClient.get<TodoResponse[]>('/todos');
-    return response.data.map(transformTodoResponse);
-  },
-
-  // Get todo by ID
-  getById: async (id: string): Promise<Todo> => {
-    const response = await apiClient.get<TodoResponse>(`/todos/${id}`);
-    return transformTodoResponse(response.data);
-  },
-
-  // Create new todo
-  create: async (todo: CreateTodoRequest): Promise<Todo> => {
-    const response = await apiClient.post<TodoResponse>('/todos', todo);
-    return transformTodoResponse(response.data);
-  },
-
-  // Update todo
-  update: async (id: string, todo: Partial<CreateTodoRequest>): Promise<Todo> => {
-    const response = await apiClient.put<TodoResponse>(`/todos/${id}`, todo);
-    return transformTodoResponse(response.data);
-  },
-
-  // Toggle todo completion
-  toggleComplete: async (id: string): Promise<Todo> => {
-    const response = await apiClient.patch<TodoResponse>(`/todos/${id}/toggle`);
-    return transformTodoResponse(response.data);
-  },
-
-  // Delete todo
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/todos/${id}`);
-  },
-
-  // Get todo statistics
-  getStats: async (): Promise<TodoStats> => {
-    const response = await apiClient.get<TodoStats>('/todos/stats');
-    return response.data;
-  }
-};
-
-// Transform backend response to frontend Todo interface
-const transformTodoResponse = (response: TodoResponse): Todo => ({
-  id: response.id,
-  title: response.title,
-  description: response.description,
-  priority: response.priority.toLowerCase() as Priority,
-  category: response.category,
-  isCompleted: response.isCompleted,
-  createdDate: new Date(response.createdDate),
-  dueDate: response.dueDate ? new Date(response.dueDate) : undefined,
-  tags: response.tags
-});
-
-// Category API service
-export const categoryApi = {
-  getAll: async (): Promise<Category[]> => {
-    const response = await apiClient.get<Category[]>('/categories');
-    return response.data;
-  },
-
-  create: async (category: Omit<Category, 'id' | 'todoCount'>): Promise<Category> => {
-    const response = await apiClient.post<Category>('/categories', category);
-    return response.data;
-  },
-
-  update: async (id: string, category: Partial<Category>): Promise<Category> => {
-    const response = await apiClient.put<Category>(`/categories/${id}`, category);
-    return response.data;
-  },
-
-  delete: async (id: string): Promise<void> => {
-    await apiClient.delete(`/categories/${id}`);
-  }
-};
-```
-
-### Step 7: Create React Context for Global State Management
-
-The TodoList uses React Context API for centralized state management:
-
-```tsx
-// TodoList/frontend/src/context/TodoContext.tsx
-import React, { createContext, useContext, useReducer, useEffect, ReactNode } from 'react';
-import { Todo, Category, TodoStats, FilterOptions } from '../types';
-import { todoApi, categoryApi } from '../services/api';
-
-interface TodoState {
-  todos: Todo[];
-  categories: Category[];
-  stats: TodoStats | null;
-  loading: boolean;
-  error: string | null;
-  filters: FilterOptions;
-}
-
-type TodoAction =
-  | { type: 'SET_LOADING'; payload: boolean }
-  | { type: 'SET_ERROR'; payload: string | null }
-  | { type: 'SET_TODOS'; payload: Todo[] }
-  | { type: 'ADD_TODO'; payload: Todo }
-  | { type: 'UPDATE_TODO'; payload: Todo }
-  | { type: 'DELETE_TODO'; payload: string }
-  | { type: 'SET_CATEGORIES'; payload: Category[] }
-  | { type: 'SET_STATS'; payload: TodoStats }
-  | { type: 'SET_FILTERS'; payload: Partial<FilterOptions> };
-
-const initialState: TodoState = {
-  todos: [],
-  categories: [],
-  stats: null,
-  loading: false,
-  error: null,
-  filters: {
-    searchQuery: '',
-    category: '',
-    priority: '',
-    isCompleted: undefined,
-    sortBy: 'createdDate',
-    sortOrder: 'desc'
-  }
-};
-
-const todoReducer = (state: TodoState, action: TodoAction): TodoState => {
-  switch (action.type) {
-    case 'SET_LOADING':
-      return { ...state, loading: action.payload };
-    case 'SET_ERROR':
-      return { ...state, error: action.payload };
-    case 'SET_TODOS':
-      return { ...state, todos: action.payload };
-    case 'ADD_TODO':
-      return { ...state, todos: [...state.todos, action.payload] };
-    case 'UPDATE_TODO':
-      return {
-        ...state,
-        todos: state.todos.map(todo =>
-          todo.id === action.payload.id ? action.payload : todo
-        )
-      };
-    case 'DELETE_TODO':
-      return {
-        ...state,
-        todos: state.todos.filter(todo => todo.id !== action.payload)
-      };
-    case 'SET_CATEGORIES':
-      return { ...state, categories: action.payload };
-    case 'SET_STATS':
-      return { ...state, stats: action.payload };
-    case 'SET_FILTERS':
-      return { ...state, filters: { ...state.filters, ...action.payload } };
-    default:
-      return state;
-  }
-};
-
-interface TodoContextValue extends TodoState {
-  loadTodos: () => Promise<void>;
-  addTodo: (todo: Omit<Todo, 'id' | 'createdDate'>) => Promise<void>;
-  updateTodo: (id: string, updates: Partial<Todo>) => Promise<void>;
-  deleteTodo: (id: string) => Promise<void>;
-  toggleTodoComplete: (id: string) => Promise<void>;
-  loadCategories: () => Promise<void>;
-  loadStats: () => Promise<void>;
-  updateFilters: (filters: Partial<FilterOptions>) => void;
-}
-
-const TodoContext = createContext<TodoContextValue | undefined>(undefined);
-
-export const TodoProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [state, dispatch] = useReducer(todoReducer, initialState);
-
-  const loadTodos = async () => {
-    dispatch({ type: 'SET_LOADING', payload: true });
-    try {
-      const todos = await todoApi.getAll();
-      dispatch({ type: 'SET_TODOS', payload: todos });
-      dispatch({ type: 'SET_ERROR', payload: null });
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to load todos' });
-    } finally {
-      dispatch({ type: 'SET_LOADING', payload: false });
-    }
-  };
-
-  const addTodo = async (todoData: Omit<Todo, 'id' | 'createdDate'>) => {
-    try {
-      const newTodo = await todoApi.create({
-        title: todoData.title,
-        description: todoData.description,
-        priority: todoData.priority,
-        category: todoData.category,
-        dueDate: todoData.dueDate?.toISOString(),
-        tags: todoData.tags
-      });
-      dispatch({ type: 'ADD_TODO', payload: newTodo });
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to create todo' });
-    }
-  };
-
-  const toggleTodoComplete = async (id: string) => {
-    try {
-      const updatedTodo = await todoApi.toggleComplete(id);
-      dispatch({ type: 'UPDATE_TODO', payload: updatedTodo });
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to update todo' });
-    }
-  };
-
-  const deleteTodo = async (id: string) => {
-    try {
-      await todoApi.delete(id);
-      dispatch({ type: 'DELETE_TODO', payload: id });
-    } catch (error) {
-      dispatch({ type: 'SET_ERROR', payload: 'Failed to delete todo' });
-    }
-  };
-
-  const updateFilters = (filters: Partial<FilterOptions>) => {
-    dispatch({ type: 'SET_FILTERS', payload: filters });
-  };
-
-  // Load initial data
-  useEffect(() => {
-    loadTodos();
-    loadCategories();
-    loadStats();
-  }, []);
-
-  const value: TodoContextValue = {
-    ...state,
-    loadTodos,
-    addTodo,
-    updateTodo: async () => {}, // Implementation similar to above
-    deleteTodo,
-    toggleTodoComplete,
-    loadCategories: async () => {}, // Implementation similar to loadTodos
-    loadStats: async () => {}, // Implementation similar to loadTodos
-    updateFilters
-  };
-
-  return <TodoContext.Provider value={value}>{children}</TodoContext.Provider>;
-};
-
-export const useTodoContext = () => {
-  const context = useContext(TodoContext);
-  if (context === undefined) {
-    throw new Error('useTodoContext must be used within a TodoProvider');
-  }
-  return context;
-};
-```
-```
-
-### Step 8: Create TodoList Page Component
-
-The TodosPage demonstrates advanced React patterns with filtering, sorting, and state management:
-
-```tsx
-// TodoList/frontend/src/pages/TodosPage.tsx
-import React, { useState, useMemo } from 'react';
-import { useTodoContext } from '../context/TodoContext';
-import { usePageTitle } from '../hooks/usePageTitle';
-import { useTodoFilter } from '../hooks/useTodoFilter';
-import { Todo, Priority } from '../types';
-
-const TodosPage: React.FC = () => {
-  usePageTitle('Todos');
-  
-  const {
-    todos,
-    categories,
-    loading,
-    error,
-    addTodo,
-    toggleTodoComplete,
-    deleteTodo,
-    filters,
-    updateFilters
-  } = useTodoContext();
-
-  const [showCreateForm, setShowCreateForm] = useState(false);
-  const [newTodo, setNewTodo] = useState({
-    title: '',
-    description: '',
-    priority: 'medium' as Priority,
-    category: '',
-    dueDate: '',
-    tags: [] as string[]
-  });
-
-  // Custom hook for filtering and sorting todos
-  const filteredTodos = useTodoFilter(todos, filters);
-
-  const handleCreateTodo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await addTodo({
-        ...newTodo,
-        dueDate: newTodo.dueDate ? new Date(newTodo.dueDate) : undefined,
-        isCompleted: false
-      });
-      setNewTodo({
-        title: '',
-        description: '',
-        priority: 'medium',
-        category: '',
-        dueDate: '',
-        tags: []
-      });
-      setShowCreateForm(false);
-    } catch (error) {
-      console.error('Failed to create todo:', error);
-    }
-  };
-
-  const handleFilterChange = (key: keyof typeof filters, value: any) => {
-    updateFilters({ [key]: value });
-  };
-
-  const getPriorityColor = (priority: Priority): string => {
-    const colors = {
-      low: '#28a745',
-      medium: '#ffc107',
-      high: '#fd7e14',
-      urgent: '#dc3545'
-    };
-    return colors[priority];
-  };
-
-  const formatDate = (date: Date): string => {
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    }).format(date);
-  };
-
-  if (loading) return <div className="loading">Loading todos...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
-
-  return (
-    <div className="todos-page">
-      <div className="page-header">
-        <h1>Todo Management</h1>
-        <button
-          className="btn-primary"
-          onClick={() => setShowCreateForm(!showCreateForm)}
-        >
-          {showCreateForm ? 'Cancel' : 'Add New Todo'}
-        </button>
-      </div>
-
-      {/* Filters Section */}
-      <div className="filters-section">
-        <div className="filter-group">
-          <input
-            type="text"
-            placeholder="Search todos..."
-            value={filters.searchQuery}
-            onChange={(e) => handleFilterChange('searchQuery', e.target.value)}
-            className="search-input"
-          />
-        </div>
-
-        <div className="filter-group">
-          <select
-            value={filters.category}
-            onChange={(e) => handleFilterChange('category', e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Categories</option>
-            {categories.map(category => (
-              <option key={category.id} value={category.name}>
-                {category.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <select
-            value={filters.priority}
-            onChange={(e) => handleFilterChange('priority', e.target.value)}
-            className="filter-select"
-          >
-            <option value="">All Priorities</option>
-            <option value="low">Low</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-            <option value="urgent">Urgent</option>
-          </select>
-        </div>
-
-        <div className="filter-group">
-          <select
-            value={filters.isCompleted?.toString() || ''}
-            onChange={(e) => handleFilterChange('isCompleted', 
-              e.target.value === '' ? undefined : e.target.value === 'true'
-            )}
-            className="filter-select"
-          >
-            <option value="">All Status</option>
-            <option value="false">Pending</option>
-            <option value="true">Completed</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Create Form */}
-      {showCreateForm && (
-        <div className="create-form-container">
-          <form onSubmit={handleCreateTodo} className="create-form">
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="title">Title</label>
-                <input
-                  type="text"
-                  id="title"
-                  value={newTodo.title}
-                  onChange={(e) => setNewTodo({ ...newTodo, title: e.target.value })}
-                  required
-                />
-              </div>
-              
-              <div className="form-group">
-                <label htmlFor="priority">Priority</label>
-                <select
-                  id="priority"
-                  value={newTodo.priority}
-                  onChange={(e) => setNewTodo({ ...newTodo, priority: e.target.value as Priority })}
-                >
-                  <option value="low">Low</option>
-                  <option value="medium">Medium</option>
-                  <option value="high">High</option>
-                  <option value="urgent">Urgent</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="description">Description</label>
-              <textarea
-                id="description"
-                value={newTodo.description}
-                onChange={(e) => setNewTodo({ ...newTodo, description: e.target.value })}
-                rows={3}
-              />
-            </div>
-
-            <div className="form-row">
-              <div className="form-group">
-                <label htmlFor="category">Category</label>
-                <select
-                  id="category"
-                  value={newTodo.category}
-                  onChange={(e) => setNewTodo({ ...newTodo, category: e.target.value })}
-                  required
-                >
-                  <option value="">Select Category</option>
-                  {categories.map(category => (
-                    <option key={category.id} value={category.name}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="dueDate">Due Date</label>
-                <input
-                  type="date"
-                  id="dueDate"
-                  value={newTodo.dueDate}
-                  onChange={(e) => setNewTodo({ ...newTodo, dueDate: e.target.value })}
-                />
-              </div>
-            </div>
-
-            <div className="form-actions">
-              <button type="submit" className="btn-primary">Create Todo</button>
-              <button 
-                type="button" 
-                className="btn-secondary"
-                onClick={() => setShowCreateForm(false)}
-              >
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Todos List */}
-      <div className="todos-container">
-        {filteredTodos.length === 0 ? (
-          <div className="empty-state">
-            <p>No todos found matching your filters.</p>
-          </div>
-        ) : (
-          <div className="todos-grid">
-            {filteredTodos.map(todo => (
-              <div key={todo.id} className={`todo-card ${todo.isCompleted ? 'completed' : ''}`}>
-                <div className="todo-header">
-                  <h3 className="todo-title">{todo.title}</h3>
-                  <div className="todo-actions">
-                    <button
-                      className="btn-toggle"
-                      onClick={() => toggleTodoComplete(todo.id)}
-                      title={todo.isCompleted ? 'Mark as pending' : 'Mark as completed'}
-                    >
-                      {todo.isCompleted ? '↩️' : '✅'}
-                    </button>
-                    <button
-                      className="btn-delete"
-                      onClick={() => {
-                        if (window.confirm('Are you sure you want to delete this todo?')) {
-                          deleteTodo(todo.id);
-                        }
-                      }}
-                      title="Delete todo"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </div>
-
-                <p className="todo-description">{todo.description}</p>
-
-                <div className="todo-meta">
-                  <span 
-                    className="priority-badge"
-                    style={{ backgroundColor: getPriorityColor(todo.priority) }}
-                  >
-                    {todo.priority.toUpperCase()}
-                  </span>
-                  <span className="category-badge">{todo.category}</span>
-                </div>
-
-                <div className="todo-footer">
-                  <span className="created-date">
-                    Created: {formatDate(todo.createdDate)}
-                  </span>
-                  {todo.dueDate && (
-                    <span className={`due-date ${todo.dueDate < new Date() ? 'overdue' : ''}`}>
-                      Due: {formatDate(todo.dueDate)}
-                    </span>
-                  )}
-                </div>
-
-                {todo.tags.length > 0 && (
-                  <div className="todo-tags">
-                    {todo.tags.map(tag => (
-                      <span key={tag} className="tag">{tag}</span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-export default TodosPage;
-```
-
-### Step 9: Set Up Application Routing and Layout
-
-The TodoList application demonstrates a clean routing structure with layout components:
-
-```tsx
-// TodoList/frontend/src/App.tsx
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Layout from './components/layout/Layout';
-import { TodoProvider } from './context/TodoContext';
-import HomePage from './pages/HomePage';
-import TodosPage from './pages/TodosPage';
-import CategoriesPage from './pages/CategoriesPage';
-import AboutPage from './pages/AboutPage';
-import NotFoundPage from './pages/NotFoundPage';
-import { testApiConnection } from './utils/apiTest';
-import './index.css';
-
-// Test API connection on app startup
-testApiConnection();
-
-function App() {
-  return (
-    <TodoProvider>
-      <Router>
-        <Layout>
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/todos" element={<TodosPage />} />
-            <Route path="/categories" element={<CategoriesPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </Layout>
-      </Router>
-    </TodoProvider>
-  );
-}
-
-export default App;
-```
-
-### Layout Component with Navigation
-
-```tsx
-// TodoList/frontend/src/components/layout/Layout.tsx
-import React, { ReactNode } from 'react';
-import Navigation from './Navigation';
-
-interface LayoutProps {
-  children: ReactNode;
-}
-
-const Layout: React.FC<LayoutProps> = ({ children }) => {
-  return (
-    <div className="app-layout">
-      <Navigation />
-      <main className="main-content">
-        <div className="container">
-          {children}
-        </div>
-      </main>
-    </div>
-  );
-};
-
-export default Layout;
-```
-
-### Navigation Component
-
-```tsx
-// TodoList/frontend/src/components/layout/Navigation.tsx
-import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
-import { useTodoContext } from '../../context/TodoContext';
-
-const Navigation: React.FC = () => {
-  const location = useLocation();
-  const { stats } = useTodoContext();
-
-  const isActive = (path: string): boolean => {
-    return location.pathname === path;
-  };
-
-  return (
-    <nav className="navigation">
-      <div className="nav-container">
-        <Link to="/" className="nav-brand">
-          <h1>TodoList App</h1>
-        </Link>
-        
-        <ul className="nav-menu">
-          <li className="nav-item">
-            <Link 
-              to="/" 
-              className={`nav-link ${isActive('/') ? 'active' : ''}`}
-            >
-              🏠 Dashboard
-            </Link>
-          </li>
-          
-          <li className="nav-item">
-            <Link 
-              to="/todos" 
-              className={`nav-link ${isActive('/todos') ? 'active' : ''}`}
-            >
-              📝 Todos
-              {stats && stats.totalTodos > 0 && (
-                <span className="nav-badge">{stats.totalTodos}</span>
-              )}
-            </Link>
-          </li>
-          
-          <li className="nav-item">
-            <Link 
-              to="/categories" 
-              className={`nav-link ${isActive('/categories') ? 'active' : ''}`}
-            >
-              📂 Categories
-              {stats && stats.totalCategories > 0 && (
-                <span className="nav-badge">{stats.totalCategories}</span>
-              )}
-            </Link>
-          </li>
-          
-          <li className="nav-item">
-            <Link 
-              to="/about" 
-              className={`nav-link ${isActive('/about') ? 'active' : ''}`}
-            >
-              ℹ️ About
-            </Link>
-          </li>
-        </ul>
-      </div>
-    </nav>
-  );
-};
-
-export default Navigation;
-```
-
-### Custom Hooks for Enhanced Functionality
-
-The TodoList demonstrates several custom hooks for reusable logic:
-
-```typescript
-// TodoList/frontend/src/hooks/useTodoFilter.ts
-import { useMemo } from 'react';
-import { Todo, FilterOptions } from '../types';
-
-export const useTodoFilter = (todos: Todo[], filters: FilterOptions): Todo[] => {
-  return useMemo(() => {
-    let filtered = [...todos];
-
-    // Search filter
-    if (filters.searchQuery) {
-      const query = filters.searchQuery.toLowerCase();
-      filtered = filtered.filter(todo =>
-        todo.title.toLowerCase().includes(query) ||
-        todo.description.toLowerCase().includes(query) ||
-        todo.tags.some(tag => tag.toLowerCase().includes(query))
-      );
-    }
-
-    // Category filter
-    if (filters.category) {
-      filtered = filtered.filter(todo => todo.category === filters.category);
-    }
-
-    // Priority filter
-    if (filters.priority) {
-      filtered = filtered.filter(todo => todo.priority === filters.priority);
-    }
-
-    // Completion status filter
-    if (filters.isCompleted !== undefined) {
-      filtered = filtered.filter(todo => todo.isCompleted === filters.isCompleted);
-    }
-
-    // Sorting
-    filtered.sort((a, b) => {
-      const aValue = a[filters.sortBy];
-      const bValue = b[filters.sortBy];
-      
-      let comparison = 0;
-      if (aValue < bValue) comparison = -1;
-      if (aValue > bValue) comparison = 1;
-      
-      return filters.sortOrder === 'desc' ? -comparison : comparison;
-    });
-
-    return filtered;
-  }, [todos, filters]);
-};
-```
-
-```typescript
-// TodoList/frontend/src/hooks/usePageTitle.ts
-import { useEffect } from 'react';
-
-export const usePageTitle = (title: string): void => {
-  useEffect(() => {
-    const originalTitle = document.title;
-    document.title = `${title} - TodoList App`;
-    
-    return () => {
-      document.title = originalTitle;
-    };
-  }, [title]);
-};
-```
-
-### Step 10: Modern CSS Styling with TodoList Theme
-
-The TodoList application uses modern CSS with custom properties and responsive design:
-
-```css
-/* TodoList/frontend/src/index.css */
-:root {
-  /* Color Palette */
-  --primary-color: #007bff;
-  --secondary-color: #6c757d;
-  --success-color: #28a745;
-  --warning-color: #ffc107;
-  --danger-color: #dc3545;
-  --info-color: #17a2b8;
-  
-  /* Priority Colors */
-  --priority-low: #28a745;
-  --priority-medium: #ffc107;
-  --priority-high: #fd7e14;
-  --priority-urgent: #dc3545;
-  
-  /* Background Colors */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f8f9fa;
-  --bg-dark: #343a40;
-  
-  /* Text Colors */
-  --text-primary: #333333;
-  --text-secondary: #6c757d;
-  --text-light: #ffffff;
-  
-  /* Spacing */
-  --spacing-xs: 0.25rem;
-  --spacing-sm: 0.5rem;
-  --spacing-md: 1rem;
-  --spacing-lg: 1.5rem;
-  --spacing-xl: 2rem;
-  
-  /* Border Radius */
-  --border-radius-sm: 0.25rem;
-  --border-radius-md: 0.5rem;
-  --border-radius-lg: 0.75rem;
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-}
-
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
-
-body {
-  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  line-height: 1.6;
-  color: var(--text-primary);
-  background-color: var(--bg-secondary);
-  font-size: 16px;
-}
-
-/* Layout Components */
-.app-layout {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-.navigation {
-  background-color: var(--bg-dark);
-  color: var(--text-light);
-  padding: var(--spacing-md) 0;
-  box-shadow: var(--shadow-md);
-}
-
-.nav-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 var(--spacing-md);
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.nav-brand h1 {
-  color: var(--text-light);
-  text-decoration: none;
-  font-size: 1.5rem;
-  font-weight: 600;
-}
-
-.nav-menu {
-  display: flex;
-  list-style: none;
-  gap: var(--spacing-lg);
-}
-
-.nav-link {
-  color: var(--text-light);
-  text-decoration: none;
-  padding: var(--spacing-sm) var(--spacing-md);
-  border-radius: var(--border-radius-md);
-  transition: background-color 0.3s ease;
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-xs);
-}
-
-.nav-link:hover,
-.nav-link.active {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.nav-badge {
-  background-color: var(--primary-color);
-  color: var(--text-light);
-  padding: 2px 6px;
-  border-radius: 10px;
-  font-size: 0.75rem;
-  font-weight: bold;
-}
-
-/* Main Content */
-.main-content {
-  flex: 1;
-  padding: var(--spacing-xl) 0;
-}
-
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 var(--spacing-md);
-}
-
-/* Page Components */
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: var(--spacing-xl);
-  padding-bottom: var(--spacing-md);
-  border-bottom: 2px solid var(--bg-secondary);
-}
-
-.page-header h1 {
-  color: var(--text-primary);
-  font-size: 2rem;
-  font-weight: 700;
-}
-
-/* Todo Cards */
-.todos-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: var(--spacing-lg);
-  margin-top: var(--spacing-lg);
-}
-
-.todo-card {
-  background: var(--bg-primary);
-  border: 1px solid #e9ecef;
-  border-radius: var(--border-radius-lg);
-  padding: var(--spacing-lg);
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-}
-
-.todo-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-md);
-}
-
-.todo-card.completed {
-  opacity: 0.7;
-  background-color: #f8f9fa;
-}
-
-.todo-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: var(--spacing-md);
-}
-
-.todo-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin: 0;
-  flex: 1;
-}
-
-.todo-actions {
-  display: flex;
-  gap: var(--spacing-xs);
-}
-
-.btn-toggle,
-.btn-delete {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: var(--spacing-xs);
-  border-radius: var(--border-radius-sm);
-  font-size: 1.2rem;
-  transition: background-color 0.2s ease;
-}
-
-.btn-toggle:hover {
-  background-color: rgba(40, 167, 69, 0.1);
-}
-
-.btn-delete:hover {
-  background-color: rgba(220, 53, 69, 0.1);
-}
-
-.todo-description {
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-md);
-  line-height: 1.5;
-}
-
-.todo-meta {
-  display: flex;
-  gap: var(--spacing-sm);
-  margin-bottom: var(--spacing-md);
-}
-
-.priority-badge,
-.category-badge {
-  padding: var(--spacing-xs) var(--spacing-sm);
-  border-radius: var(--border-radius-sm);
-  font-size: 0.75rem;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.priority-badge {
-  color: var(--text-light);
-}
-
-.category-badge {
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
-  border: 1px solid #e9ecef;
-}
-
-.todo-footer {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: var(--spacing-sm);
-}
-
-.due-date.overdue {
-  color: var(--danger-color);
-  font-weight: 600;
-}
-
-.todo-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--spacing-xs);
-}
-
-.tag {
-  background-color: var(--info-color);
-  color: var(--text-light);
-  padding: 2px 6px;
-  border-radius: var(--border-radius-sm);
-  font-size: 0.75rem;
-}
-
-/* Forms */
-.create-form-container {
-  background: var(--bg-primary);
-  border: 1px solid #e9ecef;
-  border-radius: var(--border-radius-lg);
-  padding: var(--spacing-lg);
-  margin-bottom: var(--spacing-xl);
-  box-shadow: var(--shadow-sm);
-}
-
-.create-form {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.form-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-md);
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-}
-
-.form-group label {
-  font-weight: 600;
-  margin-bottom: var(--spacing-xs);
-  color: var(--text-primary);
-}
-
-.form-group input,
-.form-group select,
-.form-group textarea {
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid #ced4da;
-  border-radius: var(--border-radius-md);
-  font-size: 1rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
-  outline: none;
-  border-color: var(--primary-color);
-  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
-}
-
-/* Buttons */
-.btn-primary,
-.btn-secondary {
-  padding: var(--spacing-sm) var(--spacing-lg);
-  border: none;
-  border-radius: var(--border-radius-md);
-  font-size: 1rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-}
-
-.btn-primary {
-  background-color: var(--primary-color);
-  color: var(--text-light);
-}
-
-.btn-primary:hover {
-  background-color: #0056b3;
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background-color: var(--secondary-color);
-  color: var(--text-light);
-}
-
-.btn-secondary:hover {
-  background-color: #545b62;
-}
-
-/* Filters */
-.filters-section {
-  display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr;
-  gap: var(--spacing-md);
-  margin-bottom: var(--spacing-lg);
-  padding: var(--spacing-lg);
-  background: var(--bg-primary);
-  border-radius: var(--border-radius-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.search-input,
-.filter-select {
-  padding: var(--spacing-sm) var(--spacing-md);
-  border: 1px solid #ced4da;
-  border-radius: var(--border-radius-md);
-  font-size: 1rem;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-  .nav-container {
-    flex-direction: column;
-    gap: var(--spacing-md);
-  }
-  
-  .nav-menu {
-    flex-direction: column;
-    width: 100%;
-    text-align: center;
-  }
-  
-  .page-header {
-    flex-direction: column;
-    gap: var(--spacing-md);
-    align-items: stretch;
-  }
-  
-  .todos-grid {
-    grid-template-columns: 1fr;
-  }
-  
-  .filters-section {
-    grid-template-columns: 1fr;
-  }
-  
-  .form-row {
-    grid-template-columns: 1fr;
-  }
-}
-
-/* Loading and Error States */
-.loading,
-.error {
-  text-align: center;
-  padding: var(--spacing-xl);
-  font-size: 1.1rem;
-}
-
-.error {
-  color: var(--danger-color);
-  background-color: #f8d7da;
-  border: 1px solid #f5c6cb;
-  border-radius: var(--border-radius-md);
-}
-
-.empty-state {
-  text-align: center;
-  padding: var(--spacing-xl);
-  color: var(--text-secondary);
-}
-```
-
-### Step 11: Running the TodoList Application
-
-The TodoList application is now complete and demonstrates a modern full-stack architecture with comprehensive features.
-
-## 🚀 Getting Started with TodoList
-
-### Prerequisites
-- Node.js 18+ and npm
-- .NET 8 SDK
-- Modern web browser
-
-### Running the Application
-
-1. **Start the Backend API**
-```bash
-cd TodoList/backend/TodoListApi
-dotnet restore
-dotnet run --urls "http://localhost:5001"
-```
-
-The backend will be available at:
-- API: http://localhost:5001
-- Swagger UI: http://localhost:5001 (API documentation)
-
-2. **Start the Frontend** (in a new terminal)
-```bash
-cd TodoList/frontend
-npm install
-npm run dev
-```
-
-The frontend will be available at: http://localhost:5173
-
-### API Testing
-
-You can test the API using the included HTTP file:
-
-```bash
-# Using VS Code with REST Client extension
-# Open TodoList/backend/TodoListApi/api-tests.http
-```
-
-### Application Features Demonstrated
-
-**Backend (.NET 8 Minimal API)**
-- ✅ RESTful API design with proper HTTP verbs and status codes
-- ✅ Service layer architecture with dependency injection  
-- ✅ Data Transfer Objects (DTOs) for API contracts
-- ✅ Comprehensive error handling and validation
-- ✅ Swagger/OpenAPI documentation
-- ✅ CORS configuration for cross-origin requests
-- ✅ Route grouping and endpoint organization
-
-**Frontend (React + TypeScript)**
-- ✅ Modern React with hooks and context API
-- ✅ TypeScript for type safety and better developer experience
-- ✅ Responsive design with CSS custom properties
-- ✅ Advanced filtering and searching capabilities
-- ✅ Real-time statistics and data visualization
-- ✅ Custom hooks for reusable logic
-- ✅ Error boundaries and loading states
-- ✅ Routing with React Router v6
-
-**Development Best Practices**
-- ✅ Clean architecture with separation of concerns
-- ✅ Consistent error handling across frontend and backend
-- ✅ Type-safe API communication
-- ✅ Responsive and accessible UI design
-- ✅ Performance optimization with useMemo and useCallback
-- ✅ Code organization with logical folder structure
-
-## 🔧 Development Tools and Extensions
-
-**Recommended VS Code Extensions for .NET + React Development:**
-- C# Dev Kit (Microsoft)
-- REST Client (for API testing)
-- ES7+ React/Redux/React-Native snippets
-- Auto Rename Tag
-- Prettier - Code formatter
-- ESLint
-- Thunder Client (alternative to Postman)
-
-**Useful Commands:**
-```bash
-# Backend
-dotnet watch run              # Hot reload for backend
-dotnet ef migrations add      # Entity Framework migrations (if using)
-dotnet test                   # Run unit tests
-
-# Frontend  
-npm run dev                   # Development server with hot reload
-npm run build                 # Production build
-npm run preview               # Preview production build
-npm run lint                  # Run ESLint
-```
-
-This TodoList application demonstrates production-ready patterns for building scalable full-stack applications with .NET and React, serving as an excellent foundation for more complex projects.
+Each layer has a different responsibility.
+
+The browser should make the experience usable. It can prevent obvious mistakes and keep the interface responsive, but it cannot be trusted as the final authority because users can bypass it.
+
+The API should define the contract between frontend and backend. It should use resource-oriented URLs, predictable status codes, and clear JSON shapes. This connects directly to Week 3.
+
+Application logic should protect the rules of the domain. For example: an order cannot contain a negative quantity; a project feature cannot belong to a project that does not exist; a user should not edit someone else's data.
+
+The persistence layer translates application decisions into durable database operations. It should use one database client or connection pool, avoid query patterns that scale poorly, and treat migrations as versioned changes to the system.
+
+The database is the last line of defense for integrity. It should enforce uniqueness, required fields, foreign keys, and indexes where the application depends on them.
+
+---
+
+## Data Modeling as Design Work
+
+Data modeling is not just creating tables. It is deciding what the application believes exists in the world.
+
+When students ask AI for a schema, they should first describe the domain in plain English:
+
+- What are the main nouns in the app?
+- Which nouns are independent entities and which are details of another entity?
+- What can happen to each entity over time?
+- What relationships must always be true?
+- What questions will the app need to answer quickly?
+
+Example domain statement:
+
+> A course project planner lets a team track projects, features, and design decisions. A project has many features. A project has many decisions. Each feature belongs to exactly one project and has a layer, priority, and status. The app needs to show the current project plan and summarize work by layer and status.
+
+That statement already implies much of the architecture:
+
+- `Project` is a durable entity.
+- `Feature` is a durable entity related to a project.
+- `Decision` is a durable record of design thinking.
+- `layer`, `priority`, and `status` should be constrained values rather than arbitrary text.
+- The API should support reading a project with its related features and decisions.
+- The UI should distinguish between server data and local form state.
+
+### Entity Relationship Thinking
+
+Common relationship patterns:
+
+| Relationship | Example | Design meaning |
+| --- | --- | --- |
+| One-to-one | User and profile | One record extends another record |
+| One-to-many | Project and features | One parent owns or groups many children |
+| Many-to-many | Products and tags | Each side can connect to many records on the other side |
+
+Students should be cautious when AI stores repeated information in a single text field. Values like `"frontend,api,database"` look simple but make searching, filtering, validation, and relationships harder. If the application needs to ask questions about the individual values, those values probably deserve structure.
+
+### Constraints Are Part of the Design
+
+Constraints are not busywork. They are the rules the database promises to enforce.
+
+Useful constraints include:
+
+- Required fields for data the app cannot function without.
+- Unique fields for identities such as email, username, slug, or SKU.
+- Foreign keys for relationships between records.
+- Enumerated values for states such as status, role, priority, or workflow stage.
+- Cascade rules for deciding what happens to child records when a parent is deleted.
+
+AI often produces a schema that looks plausible but omits constraints. The result may work in a demo and fail as soon as real users create messy data.
+
+---
+
+## Choosing a Persistence Technology
+
+The course uses SQLite first because it keeps setup simple and lets students focus on modeling and architecture. SQLite stores data in a local file and works well for development, class demos, automated tests, and small single-user tools.
+
+Production systems often use PostgreSQL because it handles multiple users, concurrent writes, richer data types, stronger operational tooling, and managed cloud hosting. PostgreSQL is usually the default relational database choice for serious web applications.
+
+Document databases such as MongoDB are useful when records are naturally document-shaped and the structure varies significantly. They are not a shortcut around data design. If the app has clear relationships, transactions, and integrity requirements, a relational model is often easier to reason about.
+
+The practical rule for students:
+
+> Default to a relational database when the app has clear entities, relationships, and business rules. Choose another storage model only when the access patterns justify it.
+
+---
+
+## ORMs, Prisma, and the Role of a Schema
+
+An ORM is a boundary between application code and the database. It lets developers work with language-level objects while still relying on a database underneath.
+
+Prisma is useful in this course because its schema file becomes a readable design artifact. Students and AI tools can inspect it and discuss the system at a higher level than raw SQL strings.
+
+The Prisma schema communicates:
+
+- The main entities in the domain.
+- Fields and data types.
+- Required versus optional data.
+- Relationships between records.
+- Unique constraints and indexes.
+- How the application expects the database to evolve.
+
+Students do not need to memorize every Prisma syntax detail. They do need to understand what a generated schema means and whether it matches the domain.
+
+### Migrations as Versioned Architecture
+
+A migration is a versioned change to the database structure. It is similar to a commit in source control: it describes how the system moves from one shape to another.
+
+Important migration habits:
+
+- Treat migrations as history, not scratch paper.
+- Do not edit migrations that have already been shared or applied elsewhere.
+- Give migrations meaningful names that describe the design change.
+- Keep seed data separate from schema changes.
+- Test the application from a fresh database, not only from a database that already happens to work on your machine.
+
+---
+
+## API Design After Adding a Database
+
+Week 3 introduced REST as a resource-oriented contract. Week 4 adds a database behind that contract, which creates new design responsibilities.
+
+An API endpoint should not simply expose tables. It should expose useful application resources.
+
+Example resource design:
+
+| User goal | API shape | Architectural idea |
+| --- | --- | --- |
+| See all projects | `GET /api/projects` | Read server state through a collection resource |
+| Add a feature to a project | `POST /api/projects/:projectId/features` | Create a child resource under a parent |
+| Change feature status | `PATCH /api/features/:id/status` | Modify one part of a resource |
+| Record a design decision | `POST /api/projects/:projectId/decisions` | Preserve architecture history |
+
+Good API design keeps the frontend independent from database details. The frontend should not need to know table names, join structure, or migration history. It should know the API contract.
+
+### Status Codes Still Matter
+
+Database-backed APIs need clear outcomes:
+
+- `200 OK` for successful reads and updates.
+- `201 Created` when a new resource is created.
+- `204 No Content` when deletion succeeds and there is no body to return.
+- `400 Bad Request` when the client sends invalid data.
+- `404 Not Found` when the requested resource does not exist.
+- `409 Conflict` when the request violates a uniqueness or state rule.
+- `500 Internal Server Error` for unexpected server failures.
+
+Students should read AI-generated endpoints and ask: "What does this endpoint promise, and how does the client know what happened?"
+
+---
+
+## Validation as Layered Defense
+
+Validation belongs in more than one place because each layer protects a different concern.
+
+| Layer | Purpose | Example |
+| --- | --- | --- |
+| Client validation | User experience | Show immediate feedback before submit |
+| API validation | Security and contract enforcement | Reject missing or invalid JSON fields |
+| Application rules | Domain correctness | Prevent impossible workflow transitions |
+| Database constraints | Last line of integrity | Enforce required, unique, and related data |
+
+Client-side validation is helpful but never sufficient. Anything running in the browser can be bypassed. Server-side validation is the real contract. Database constraints protect the system even if application code has a bug.
+
+When reviewing AI output, students should check whether invalid data can reach the database. If yes, the generated solution is incomplete.
+
+---
+
+## Client State Versus Server State
+
+React state and database state are not the same thing.
+
+React state is ideal for current interaction:
+
+- Form drafts.
+- Selected project.
+- Expanded panels.
+- Loading and error messages.
+- Optimistic UI updates.
+
+Server state is data fetched from the API:
+
+- Projects.
+- Features.
+- Orders.
+- Users.
+- Saved design decisions.
+
+Server state has a source of truth outside React. It can become stale. Another user, request, or background job might change it. The frontend must be designed around fetching, refreshing, error handling, and reconciliation.
+
+This is one reason state management gets harder as applications become real. The question is not only "where do I store this variable?" It is also "who owns the truth?"
+
+---
+
+## Caching and Freshness
+
+Caching improves speed by reusing previous work, but it introduces a design question: how fresh does the data need to be?
+
+Common cache locations:
+
+- Browser HTTP cache for static assets and safe repeated responses.
+- Client memory for recently fetched API data.
+- Server memory for expensive summaries or rarely changing reference data.
+- Shared cache systems such as Redis in production architectures.
+
+Useful design questions:
+
+- Is the data public or user-specific?
+- Can stale data cause harm, or is it merely inconvenient?
+- What event should invalidate the cache?
+- Should the client show cached data while refreshing in the background?
+
+Caching is not just a performance feature. It is a correctness tradeoff.
+
+---
+
+## Performance Thinking Without Getting Lost in Syntax
+
+Students do not need to become database performance experts in Week 4, but they should recognize the patterns that make apps slow.
+
+The most important concept is round trips. A query inside a loop usually means the app is asking the database many small questions instead of one better-shaped question. This is often called an N+1 query problem.
+
+Other performance design questions:
+
+- Does the endpoint return every record when the UI only needs one page?
+- Does the app fetch related data intentionally or accidentally one record at a time?
+- Are commonly filtered or sorted fields indexed?
+- Does the API return fields the UI does not need?
+- Could a summary be precomputed or cached?
+
+The goal is not premature optimization. The goal is to notice when the architecture will stop scaling.
+
+---
+
+## AI-Assisted Data Design Workflow
+
+AI is useful for generating schemas, seed data, endpoint drafts, and validation code. It is less reliable at choosing the right domain boundaries and constraints unless the prompt gives strong guidance.
+
+A stronger workflow:
+
+1. Describe the domain in plain English.
+2. Identify entities, relationships, and lifecycle states before asking for code.
+3. Ask AI for a proposed schema and explain its reasoning.
+4. Review the schema against constraints, relationships, indexes, and data ownership.
+5. Ask AI to generate implementation only after the design is clear.
+6. Run the app from a fresh database and test realistic invalid inputs.
+7. Document what AI produced, what you accepted, and what you changed.
+
+Example prompts for students:
+
+> I am building a course project planner with projects, features, and design decisions. Before writing code, identify the durable entities, relationships, constraints, and likely API resources. Explain your assumptions.
+
+> Review this Prisma schema as an architect. Look for missing constraints, weak relationships, unclear ownership, bad data types, missing indexes, and places where the model does not match the domain.
+
+> Generate seed data that demonstrates realistic relationships and edge cases. Include enough records to test filtering, empty states, and status changes.
+
+> Review these API endpoints for REST design, validation, error handling, N+1 query risk, and whether the frontend is coupled too tightly to database structure.
+
+---
+
+## Runnable Class Example
+
+Use the sample in `week04/samples/full-stack-architecture-demo` as the in-class demonstration.
+
+The demo is intentionally small, but it combines the concepts from Weeks 1-4:
+
+- HTML, CSS, and JavaScript as the browser foundation.
+- React components, controlled forms, reducer-based UI state, and derived display state.
+- REST endpoints, HTTP methods, status codes, JSON responses, and CORS.
+- Prisma schema design, SQLite persistence, relationships, seed data, validation, and simple server-side caching.
+
+Suggested classroom flow:
+
+1. Start by reading the README and the architecture diagram.
+2. Ask students to identify which state is UI state and which state is durable state.
+3. Inspect the Prisma schema as a design artifact before running the app.
+4. Run the app and add a feature from the React UI.
+5. Refresh the browser and show that the feature persists.
+6. Send an invalid request and inspect the API error.
+7. Ask AI to propose one schema improvement, then evaluate the suggestion as a class.
+
+The goal is not to teach every line of implementation. The goal is for students to see how the layers cooperate and where architectural judgment is required.
+
+---
+
+## Discussion Questions
+
+- What data in your current homework app is temporary, and what data should become durable?
+- If two users are using the app at the same time, what assumptions break?
+- Which database constraints would protect your app from invalid AI-generated endpoint code?
+- Which parts of the app should the frontend own, and which parts should the backend own?
+- What would make an AI-generated schema look correct but fail in production?
+- How would you explain the difference between API design and database design to a nontechnical stakeholder?
+
+---
+
+## Architecture Review Checklist
+
+Before accepting AI-generated persistence code, students should review:
+
+- The domain nouns are represented as clear entities.
+- Relationships match the real-world ownership rules.
+- Required fields, unique fields, and constrained status values are explicit.
+- Many-to-many relationships are modeled structurally, not as comma-separated text.
+- Money, dates, IDs, and status fields use appropriate data types.
+- The API exposes useful resources rather than leaking table structure.
+- Client validation improves UX, but server validation enforces the contract.
+- Database constraints provide a final integrity layer.
+- List endpoints have a plan for pagination or filtering.
+- Related data is fetched intentionally, avoiding N+1 query patterns.
+- Cache behavior is understandable and invalidated after writes.
+- Seed data proves the relationships and edge cases actually work.
+
+---
+
+## Key Terms
+
+| Term | Meaning |
+| --- | --- |
+| Durable state | Data that survives page refreshes, server restarts, and future sessions |
+| UI state | Temporary client-side state used to render the current interaction |
+| Server state | Data fetched from an API whose source of truth is outside the frontend |
+| Entity | A durable thing the system tracks, such as project, user, order, or feature |
+| Relationship | A structured connection between entities |
+| Constraint | A rule enforced by the database or application |
+| Migration | A versioned change to the database schema |
+| Seed data | Sample data used to make a fresh database useful for development and testing |
+| ORM | A tool that maps application objects to database records |
+| N+1 query | A performance problem caused by querying related data inside a loop |
+| Transaction | A group of database operations that succeeds or fails as one unit |
+| Cache invalidation | The decision about when stored cached data must be refreshed or removed |
