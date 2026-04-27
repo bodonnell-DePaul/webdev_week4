@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Week 4: Data Persistence &amp; State Management — CSC 436</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/theme/night.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+  <style>
+    :root {
+      --r-heading-font: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      --r-main-font: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      --r-heading-color: #58a6ff;
+    }
+    .reveal h1, .reveal h2 { text-transform: none; }
+    .reveal h3 { color: #8b949e; text-transform: none; }
+    .reveal pre { font-size: 0.55em; width: 95%; }
+    .reveal code { font-family: 'Cascadia Code', 'Fira Code', monospace; }
+    .reveal ul { font-size: 0.85em; }
+    .reveal .small { font-size: 0.7em; }
+    .reveal .columns { display: flex; gap: 2em; }
+    .reveal .columns > * { flex: 1; }
+    .reveal .highlight-red { color: #f85149; }
+    .reveal .highlight-green { color: #3fb950; }
+    .reveal .highlight-yellow { color: #d29922; }
+    .reveal .emoji { font-size: 1.2em; }
+    .reveal table { font-size: 0.7em; margin: 0 auto; }
+    .reveal table th { background: #161b22; }
+    .reveal table td, .reveal table th { border: 1px solid #30363d; padding: 0.4em 0.8em; }
+    .reveal .ai-box {
+      background: #1c2333;
+      border-left: 4px solid #58a6ff;
+      padding: 0.5em 1em;
+      margin: 0.5em 0;
+      font-size: 0.75em;
+      text-align: left;
+    }
+    .reveal .warning-box {
+      background: #2d1b00;
+      border-left: 4px solid #d29922;
+      padding: 0.5em 1em;
+      margin: 0.5em 0;
+      font-size: 0.75em;
+      text-align: left;
+    }
+    .reveal .antipattern {
+      background: #2d1117;
+      border-left: 4px solid #f85149;
+      padding: 0.5em 1em;
+      margin: 0.5em 0;
+      font-size: 0.75em;
+      text-align: left;
+    }
+  </style>
+</head>
+<body>
+  <div class="reveal">
+    <div class="slides">
+
+      <!-- ============ TITLE ============ -->
+      <section>
+        <h1>Week 4</h1>
+        <h2>Data Persistence &amp; State Management</h2>
+        <h3>CSC 436 · Web Applications · DePaul University</h3>
+        <p class="small">Prof. Brian O'Donnell · Monday 5:45–9:00 PM</p>
+        <aside class="notes">Welcome to Week 4. Tonight we move from in-memory data to real databases, cover ORMs, and explore React state management patterns. We'll also look at common AI pitfalls when generating database code.</aside>
+      </section>
+
+      <!-- ============ AGENDA ============ -->
+      <section>
+        <h2>Tonight's Agenda</h2>
+        <ol>
+          <li>Database Options for Web Apps</li>
+          <li>ORMs &amp; Query Builders</li>
+          <li>AI-Generated Schemas — Evaluating Quality</li>
+          <li>Migrations &amp; Seed Data</li>
+          <li>SQL vs NoSQL</li>
+          <li>React State Management</li>
+          <li>Caching Strategies</li>
+          <li>AI Pitfalls with Databases</li>
+          <li>Data Validation (Client + Server)</li>
+          <li><strong>Exercise:</strong> Prisma + Express</li>
+        </ol>
+        <aside class="notes">Packed agenda tonight. We'll break around 7:15 PM after the state management section. The hands-on exercise ties everything together.</aside>
+      </section>
+
+      <!-- ============ PART 1: DATABASE OPTIONS ============ -->
+      <section>
+        <h2>Part 1</h2>
+        <h1>Database Options for Web Apps</h1>
+        <aside class="notes">Let's start with the landscape. Every web app needs to store data. The question is where and how.</aside>
+      </section>
+
+      <section>
+        <h2>The Database Landscape</h2>
+        <table>
+          <thead>
+            <tr><th>Database</th><th>Type</th><th>Best For</th><th>Use In This Course</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>SQLite</strong></td><td>Relational (file)</td><td>Dev, prototyping, embedded</td><td class="highlight-green">✅ Primary</td></tr>
+            <tr><td><strong>PostgreSQL</strong></td><td>Relational (server)</td><td>Production apps</td><td>Deployment</td></tr>
+            <tr><td><strong>MySQL</strong></td><td>Relational (server)</td><td>LAMP stacks, WordPress</td><td>Mentioned</td></tr>
+            <tr><td><strong>MongoDB</strong></td><td>Document (NoSQL)</td><td>Flexible schemas, JSON</td><td>Comparison</td></tr>
+            <tr><td><strong>Redis</strong></td><td>Key-Value (in-memory)</td><td>Caching, sessions</td><td>Concepts</td></tr>
+          </tbody>
+        </table>
+        <aside class="notes">We use SQLite for development because it requires zero setup — it's just a file. For production deployments later in the quarter, we'll use PostgreSQL on Azure. The beauty of using an ORM is that switching is usually just a connection string change.</aside>
+      </section>
+
+      <section>
+        <h2>SQLite — Why We Start Here</h2>
+        <ul>
+          <li><span class="emoji">📦</span> Zero install — it's just a file on disk</li>
+          <li><span class="emoji">⚡</span> Fast for development and testing</li>
+          <li><span class="emoji">🔄</span> Easy to reset — delete the file, re-seed</li>
+          <li><span class="emoji">🚫</span> No separate server process to manage</li>
+          <li><span class="emoji">⚠️</span> Limitations: no concurrent writes, limited types</li>
+        </ul>
+        <pre><code class="language-bash"># Your database is literally a file
+ls -la prisma/dev.db
+# -rw-r--r-- 1 user 28672 Oct 14 dev.db</code></pre>
+        <aside class="notes">SQLite stores everything in a single file. This is great for development but not suitable for production with multiple users. It doesn't handle concurrent writes well.</aside>
+      </section>
+
+      <section>
+        <h2>PostgreSQL — Production-Grade</h2>
+        <ul>
+          <li>Full ACID compliance with concurrent access</li>
+          <li>Rich data types: JSON, arrays, full-text search</li>
+          <li>Scales to millions of rows with proper indexing</li>
+          <li>Available on every cloud platform (Azure, AWS, GCP)</li>
+        </ul>
+        <div class="ai-box">
+          <strong>🤖 AI Tip:</strong> When asking AI to generate database code, specify "use PostgreSQL syntax" or "use SQLite syntax" — they have differences in type names, auto-increment, and JSON handling.
+        </div>
+        <aside class="notes">PostgreSQL is the gold standard for relational databases in web apps. When we deploy to Azure later, we'll switch our Prisma connection from SQLite to PostgreSQL with just one config change.</aside>
+      </section>
+
+      <section>
+        <h2>MongoDB — The NoSQL Option</h2>
+        <ul>
+          <li>Document-based: stores JSON-like objects (BSON)</li>
+          <li>Schema-flexible: each document can have different fields</li>
+          <li>Great for: content management, IoT, rapid prototyping</li>
+          <li>Not great for: complex relationships, transactions</li>
+        </ul>
+        <pre><code class="language-javascript">// MongoDB document — no fixed schema
+{
+  _id: ObjectId("507f1f77bcf86cd799439011"),
+  name: "Laptop",
+  price: 999.99,
+  specs: { ram: "16GB", storage: "512GB SSD" },
+  tags: ["electronics", "computer"]
+}</code></pre>
+        <aside class="notes">MongoDB is popular but often overused. Many apps that use MongoDB would be better served by a relational database. We'll discuss when NoSQL actually makes sense later in the deck.</aside>
+      </section>
+
+      <!-- ============ PART 2: ORMs ============ -->
+      <section>
+        <h2>Part 2</h2>
+        <h1>ORMs &amp; Query Builders</h1>
+        <aside class="notes">Writing raw SQL for every operation is tedious and error-prone. ORMs provide a layer of abstraction that maps database tables to JavaScript objects.</aside>
+      </section>
+
+      <section>
+        <h2>What Is an ORM?</h2>
+        <p><strong>Object-Relational Mapping</strong> — translates between database rows and language objects</p>
+        <div class="columns">
+          <div>
+            <h3 class="highlight-red">Raw SQL</h3>
+            <pre><code class="language-sql">SELECT p.*, c.name AS category
+FROM products p
+JOIN categories c ON p.category_id = c.id
+WHERE p.price > 50;</code></pre>
+          </div>
+          <div>
+            <h3 class="highlight-green">Prisma ORM</h3>
+            <pre><code class="language-javascript">const products = await prisma.product.findMany({
+  where: { price: { gt: 50 } },
+  include: { category: true }
+});</code></pre>
+          </div>
+        </div>
+        <aside class="notes">Both produce the same result. The ORM version is more readable and type-safe. However, understanding the underlying SQL is crucial for debugging and performance tuning.</aside>
+      </section>
+
+      <section>
+        <h2>Node.js ORM Landscape</h2>
+        <table>
+          <thead>
+            <tr><th>Tool</th><th>Type</th><th>Strengths</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>Prisma</strong></td><td>ORM</td><td>Type-safe, great DX, schema-first</td></tr>
+            <tr><td><strong>Sequelize</strong></td><td>ORM</td><td>Mature, feature-rich, model-first</td></tr>
+            <tr><td><strong>Drizzle</strong></td><td>ORM</td><td>Lightweight, SQL-like API</td></tr>
+            <tr><td><strong>Knex.js</strong></td><td>Query Builder</td><td>Flexible, close to SQL</td></tr>
+            <tr><td><strong>TypeORM</strong></td><td>ORM</td><td>Decorators, TypeScript-native</td></tr>
+          </tbody>
+        </table>
+        <p class="small">We'll use <strong>Prisma</strong> in this course — best developer experience and AI tools generate better Prisma code.</p>
+        <aside class="notes">Prisma is our choice because it has the best developer experience, generates TypeScript types from your schema, and AI models produce higher-quality Prisma code than other ORMs due to its clear, declarative schema language.</aside>
+      </section>
+
+      <section>
+        <h2>Prisma — The Three Pillars</h2>
+        <ol>
+          <li><strong>Prisma Schema</strong> — define models in <code>schema.prisma</code></li>
+          <li><strong>Prisma Migrate</strong> — version-controlled database changes</li>
+          <li><strong>Prisma Client</strong> — auto-generated, type-safe query API</li>
+        </ol>
+        <pre><code class="language-prisma">// prisma/schema.prisma
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  price       Float
+  createdAt   DateTime @default(now())
+  category    Category @relation(fields: [categoryId], references: [id])
+  categoryId  Int
+}</code></pre>
+        <aside class="notes">The Prisma schema is a single source of truth. From it, Prisma generates SQL migrations, TypeScript types, and the query client. This is a schema-first approach — you define what you want, and the tooling generates the rest.</aside>
+      </section>
+
+      <section>
+        <h2>Prisma Workflow</h2>
+        <pre><code class="language-bash"># 1. Initialize Prisma in your project
+npx prisma init --datasource-provider sqlite
+
+# 2. Define your models in prisma/schema.prisma
+#    (edit the file)
+
+# 3. Create and apply migration
+npx prisma migrate dev --name init
+
+# 4. Generate the client
+npx prisma generate
+
+# 5. Explore your data visually
+npx prisma studio</code></pre>
+        <div class="ai-box">
+          <strong>🤖 AI Tip:</strong> "Generate a Prisma schema for an e-commerce app with products, categories, and orders" is a great starting prompt — but always review the relationships!
+        </div>
+        <aside class="notes">Walk through each step. Prisma Studio is excellent for visual data exploration. Students should run prisma studio to verify their schema and seed data.</aside>
+      </section>
+
+      <!-- ============ PART 3: AI-GENERATED SCHEMAS ============ -->
+      <section>
+        <h2>Part 3</h2>
+        <h1>AI-Generated Database Schemas</h1>
+        <h3>Evaluating What the AI Produces</h3>
+        <aside class="notes">AI is great at generating initial schemas, but you need to critically evaluate the output. Let's look at what to check.</aside>
+      </section>
+
+      <section>
+        <h2>AI Schema Checklist ✅</h2>
+        <ul>
+          <li><span class="highlight-green">✅</span> Are all relationships defined correctly? (1:1, 1:N, N:M)</li>
+          <li><span class="highlight-green">✅</span> Are required fields marked as non-nullable?</li>
+          <li><span class="highlight-green">✅</span> Is <code>@unique</code> applied where appropriate (email, slug)?</li>
+          <li><span class="highlight-green">✅</span> Are <code>createdAt</code> / <code>updatedAt</code> timestamps included?</li>
+          <li><span class="highlight-green">✅</span> Does cascade delete make sense for each relation?</li>
+          <li><span class="highlight-green">✅</span> Are indexes defined for frequently queried fields?</li>
+          <li><span class="highlight-green">✅</span> Are decimal types used for money (not Float)?</li>
+        </ul>
+        <aside class="notes">Go through each item. The most common AI mistake is using Float for money — Prisma supports Decimal type. Another common mistake is missing cascade delete rules, which can leave orphaned records.</aside>
+      </section>
+
+      <section>
+        <h2>Common AI Schema Mistakes</h2>
+        <div class="antipattern">
+          <strong>❌ AI often generates:</strong>
+          <pre><code class="language-prisma">model Order {
+  id       Int    @id @default(autoincrement())
+  total    Float  // ❌ Float for money!
+  status   String // ❌ No enum, any string accepted
+  userId   Int    // ❌ No @relation defined
+}</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Better version:</strong>
+          <pre><code class="language-prisma">model Order {
+  id        Int         @id @default(autoincrement())
+  total     Decimal     // ✅ Precise money type
+  status    OrderStatus @default(PENDING) // ✅ Enum
+  user      User        @relation(fields: [userId], references: [id])
+  userId    Int
+  createdAt DateTime    @default(now())
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+}</code></pre>
+        </div>
+        <aside class="notes">Show both versions side-by-side. Ask students why Float is bad for money (floating point precision errors — 0.1 + 0.2 !== 0.3). Enums prevent invalid status values from being saved.</aside>
+      </section>
+
+      <!-- ============ PART 4: MIGRATIONS & SEED DATA ============ -->
+      <section>
+        <h2>Part 4</h2>
+        <h1>Migrations &amp; Seed Data</h1>
+        <aside class="notes">Once you have a schema, you need to create the actual database tables and populate them with test data.</aside>
+      </section>
+
+      <section>
+        <h2>Database Migrations</h2>
+        <ul>
+          <li>Version-controlled changes to your database schema</li>
+          <li>Each migration is a SQL file that modifies the database</li>
+          <li>Applied in order — can be rolled back</li>
+          <li>Critical for team collaboration and deployment</li>
+        </ul>
+        <pre><code class="language-bash"># Create a migration after schema changes
+npx prisma migrate dev --name add_order_items
+
+# This generates:
+# prisma/migrations/20241014_add_order_items/migration.sql
+
+# Apply migrations in production
+npx prisma migrate deploy</code></pre>
+        <aside class="notes">Migrations are like Git commits for your database schema. Never modify a migration after it's been applied. Always create a new migration for changes.</aside>
+      </section>
+
+      <section>
+        <h2>Seed Data with AI</h2>
+        <pre><code class="language-javascript">// prisma/seed.js
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+async function main() {
+  // Clear existing data
+  await prisma.orderItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.category.deleteMany();
+
+  const electronics = await prisma.category.create({
+    data: {
+      name: 'Electronics',
+      products: {
+        create: [
+          { name: 'Laptop', price: 999.99, stock: 50 },
+          { name: 'Headphones', price: 79.99, stock: 200 },
+        ]
+      }
+    }
+  });
+  console.log(`Seeded ${electronics.name} with products`);
+}
+main().catch(console.error).finally(() => prisma.$disconnect());</code></pre>
+        <aside class="notes">Show how to use nested creates in Prisma for seed data. The delete order matters — you must delete in reverse dependency order. AI tools are great at generating realistic seed data, but always verify the relationships.</aside>
+      </section>
+
+      <section>
+        <h2>Running Seeds</h2>
+        <pre><code class="language-json">// package.json
+{
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  }
+}</code></pre>
+        <pre><code class="language-bash"># Run the seed script
+npx prisma db seed
+
+# Or reset everything and re-seed
+npx prisma migrate reset</code></pre>
+        <div class="ai-box">
+          <strong>🤖 AI Prompt:</strong> "Generate Prisma seed data for an e-commerce app with 5 categories, 20 products, 10 users, and 15 orders with order items. Use realistic product names and prices."
+        </div>
+        <aside class="notes">The prisma.seed config in package.json tells Prisma which script to run. The migrate reset command drops the database, re-applies all migrations, and runs the seed script — very useful during development.</aside>
+      </section>
+
+      <!-- ============ PART 5: SQL vs NoSQL ============ -->
+      <section>
+        <h2>Part 5</h2>
+        <h1>SQL vs NoSQL</h1>
+        <h3>When to Use Each</h3>
+        <aside class="notes">This is one of the most common questions in web dev. The answer, as always, is "it depends."</aside>
+      </section>
+
+      <section>
+        <h2>SQL vs NoSQL Decision Guide</h2>
+        <table>
+          <thead>
+            <tr><th>Factor</th><th>SQL (PostgreSQL)</th><th>NoSQL (MongoDB)</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>Data Structure</td><td>Fixed, predictable</td><td>Flexible, evolving</td></tr>
+            <tr><td>Relationships</td><td class="highlight-green">Strong (JOINs)</td><td class="highlight-red">Weak (embedded/refs)</td></tr>
+            <tr><td>Transactions</td><td class="highlight-green">Full ACID</td><td class="highlight-yellow">Limited</td></tr>
+            <tr><td>Scaling</td><td>Vertical first</td><td class="highlight-green">Horizontal</td></tr>
+            <tr><td>Schema Changes</td><td>Migration required</td><td class="highlight-green">Just write new fields</td></tr>
+            <tr><td>Query Power</td><td class="highlight-green">Complex JOINs, aggregations</td><td>Good for document lookups</td></tr>
+          </tbody>
+        </table>
+        <p><strong>Rule of thumb:</strong> If you're building a business app with clear entities and relationships → SQL</p>
+        <aside class="notes">Most web applications should start with SQL. NoSQL is great for specific use cases like logging, content management, or IoT data. If you're asking "should I use NoSQL?" the answer is probably no — unless you have a specific reason.</aside>
+      </section>
+
+      <section>
+        <h2>The NoSQL Trap 🪤</h2>
+        <div class="warning-box">
+          <strong>⚠️ Common Mistake:</strong> AI tools often suggest MongoDB for projects where PostgreSQL would be better. Watch out for:
+          <ul>
+            <li>Data duplication instead of relationships</li>
+            <li>No referential integrity — orphaned records</li>
+            <li>"Flexible schema" becoming "inconsistent data"</li>
+            <li>Complex aggregation pipelines that a JOIN would solve</li>
+          </ul>
+        </div>
+        <p class="small"><strong>Use NoSQL when:</strong> truly schema-less data, massive write throughput, document-centric access patterns, or caching layers</p>
+        <aside class="notes">Many tutorial sites and AI tools default to MongoDB because it's "easier to get started." But the long-term cost of denormalized data in a relational domain is high. Always think about your data relationships first.</aside>
+      </section>
+
+      <!-- ============ PART 6: STATE MANAGEMENT ============ -->
+      <section>
+        <h2>Part 6</h2>
+        <h1>React State Management</h1>
+        <h3>From Component State to Global State</h3>
+        <aside class="notes">Now let's shift to the frontend. We covered useState in Week 3. Now we'll look at managing state that needs to be shared across many components.</aside>
+      </section>
+
+      <section>
+        <h2>State Management Spectrum</h2>
+        <pre><code class="plaintext">Simple ◄──────────────────────────────────► Complex
+
+useState    useReducer    Context API    Zustand    Redux
+  (local)     (local)      (global)     (global)   (global)
+   └─ 1 component  └─ complex logic  └─ theme, auth  └─ large apps</code></pre>
+        <ul>
+          <li><strong>useState</strong> — simple values in one component</li>
+          <li><strong>useReducer</strong> — complex state logic (like a mini Redux)</li>
+          <li><strong>Context API</strong> — share state across component tree (built-in)</li>
+          <li><strong>Zustand</strong> — lightweight external store (our recommendation)</li>
+          <li><strong>Redux</strong> — heavy-duty, enterprise-scale state</li>
+        </ul>
+        <aside class="notes">Don't reach for Redux until you need it. Most apps do fine with Context or Zustand. We'll focus on Context API tonight since it's built into React.</aside>
+      </section>
+
+      <section>
+        <h2>Context API — Creating a Context</h2>
+        <pre><code class="language-javascript">// context/CartContext.jsx
+import { createContext, useContext, useReducer } from 'react';
+
+const CartContext = createContext();
+
+function cartReducer(state, action) {
+  switch (action.type) {
+    case 'ADD_ITEM':
+      return { ...state, items: [...state.items, action.payload] };
+    case 'REMOVE_ITEM':
+      return {
+        ...state,
+        items: state.items.filter(item => item.id !== action.payload)
+      };
+    case 'CLEAR':
+      return { ...state, items: [] };
+    default:
+      throw new Error(`Unknown action: ${action.type}`);
+  }
+}</code></pre>
+        <aside class="notes">We combine Context with useReducer for predictable state updates. The reducer is a pure function — given the same state and action, it always produces the same result. This pattern will feel familiar if students have used Redux before.</aside>
+      </section>
+
+      <section>
+        <h2>Context API — Provider &amp; Hook</h2>
+        <pre><code class="language-javascript">// context/CartContext.jsx (continued)
+export function CartProvider({ children }) {
+  const [state, dispatch] = useReducer(cartReducer, { items: [] });
+
+  const addItem = (product) =>
+    dispatch({ type: 'ADD_ITEM', payload: product });
+  const removeItem = (id) =>
+    dispatch({ type: 'REMOVE_ITEM', payload: id });
+  const clearCart = () =>
+    dispatch({ type: 'CLEAR' });
+
+  return (
+    &lt;CartContext.Provider value={{ ...state, addItem, removeItem, clearCart }}&gt;
+      {children}
+    &lt;/CartContext.Provider&gt;
+  );
+}
+
+// Custom hook for easy access
+export function useCart() {
+  const context = useContext(CartContext);
+  if (!context) throw new Error('useCart must be used within CartProvider');
+  return context;
+}</code></pre>
+        <aside class="notes">The custom hook pattern is important — it provides a clean API and catches the common mistake of using the context outside its provider. Wrap your App with CartProvider, then call useCart() from any component.</aside>
+      </section>
+
+      <section>
+        <h2>Using the Context in Components</h2>
+        <pre><code class="language-javascript">// components/ProductCard.jsx
+import { useCart } from '../context/CartContext';
+
+function ProductCard({ product }) {
+  const { addItem } = useCart();
+
+  return (
+    &lt;div className="product-card"&gt;
+      &lt;h3&gt;{product.name}&lt;/h3&gt;
+      &lt;p&gt;${product.price}&lt;/p&gt;
+      &lt;button onClick={() =&gt; addItem(product)}&gt;
+        Add to Cart
+      &lt;/button&gt;
+    &lt;/div&gt;
+  );
+}
+
+// components/CartBadge.jsx
+function CartBadge() {
+  const { items } = useCart();
+  return &lt;span className="badge"&gt;{items.length}&lt;/span&gt;;
+}</code></pre>
+        <aside class="notes">Both components access the same cart state without prop drilling. The ProductCard adds items, and the CartBadge shows the count — they don't need to know about each other.</aside>
+      </section>
+
+      <section>
+        <h2>Zustand — The Lightweight Alternative</h2>
+        <pre><code class="language-javascript">// store/cartStore.js
+import { create } from 'zustand';
+
+const useCartStore = create((set) => ({
+  items: [],
+  addItem: (product) =>
+    set((state) => ({ items: [...state.items, product] })),
+  removeItem: (id) =>
+    set((state) => ({
+      items: state.items.filter(item => item.id !== id)
+    })),
+  clearCart: () => set({ items: [] }),
+  get totalPrice() {
+    return this.items.reduce((sum, item) => sum + item.price, 0);
+  }
+}));
+
+// Usage — no Provider needed!
+function CartBadge() {
+  const itemCount = useCartStore((state) => state.items.length);
+  return &lt;span&gt;{itemCount}&lt;/span&gt;;
+}</code></pre>
+        <aside class="notes">Zustand is simpler than Context + useReducer. No Provider wrapping, no boilerplate. It's our recommended choice for projects beyond the basics. Notice how you can select specific slices of state to prevent unnecessary re-renders.</aside>
+      </section>
+
+      <!-- ============ PART 7: CACHING ============ -->
+      <section>
+        <h2>Part 7</h2>
+        <h1>Caching Strategies</h1>
+        <aside class="notes">Caching is how we make apps fast. Let's look at the different layers where caching happens.</aside>
+      </section>
+
+      <section>
+        <h2>Caching Layers</h2>
+        <pre><code class="plaintext">User Request
+    │
+    ▼
+┌─────────────────┐
+│  Browser Cache   │  HTTP Cache-Control headers
+├─────────────────┤
+│  CDN Cache       │  Static assets, API responses
+├─────────────────┤
+│  App Memory      │  In-process cache (Node.js Map)
+├─────────────────┤
+│  Redis / Memcache│  Shared cache across servers
+├─────────────────┤
+│  Database Cache  │  Query cache, connection pool
+└─────────────────┘</code></pre>
+        <aside class="notes">Each layer serves a different purpose. Browser cache prevents network requests entirely. Redis sits between your app and database, storing frequently accessed data in memory. We'll focus on browser cache and in-memory cache tonight.</aside>
+      </section>
+
+      <section>
+        <h2>Practical Caching in Express</h2>
+        <pre><code class="language-javascript">// Simple in-memory cache
+const cache = new Map();
+
+app.get('/api/products', async (req, res) => {
+  const cacheKey = 'all-products';
+
+  // Check cache first
+  if (cache.has(cacheKey)) {
+    return res.json(cache.get(cacheKey));
+  }
+
+  // Cache miss — query database
+  const products = await prisma.product.findMany({
+    include: { category: true }
+  });
+
+  // Store in cache with TTL
+  cache.set(cacheKey, products);
+  setTimeout(() => cache.delete(cacheKey), 60000); // 1 min TTL
+
+  res.json(products);
+});</code></pre>
+        <div class="warning-box">
+          <strong>⚠️ Note:</strong> In-memory cache is lost on server restart and not shared across instances. Use Redis for production caching.
+        </div>
+        <aside class="notes">This is a basic caching pattern. The tricky part is cache invalidation — when data changes, you need to clear the cache. The joke is that there are only two hard problems in CS: cache invalidation, naming things, and off-by-one errors.</aside>
+      </section>
+
+      <!-- ============ PART 8: AI PITFALLS ============ -->
+      <section>
+        <h2>Part 8</h2>
+        <h1>Common AI Pitfalls</h1>
+        <h3 class="highlight-red">What AI Gets Wrong with Databases</h3>
+        <aside class="notes">This is critical. AI tools are great at generating database code, but they have consistent blind spots. Let's learn to spot them.</aside>
+      </section>
+
+      <section>
+        <h2>Pitfall 1: The N+1 Query Problem</h2>
+        <div class="antipattern">
+          <strong>❌ AI often generates:</strong>
+          <pre><code class="language-javascript">// Fetches all orders, then queries user for EACH order
+const orders = await prisma.order.findMany();
+for (const order of orders) {
+  order.user = await prisma.user.findUnique({
+    where: { id: order.userId }
+  });
+  // 1 query for orders + N queries for users = N+1 queries!
+}</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Fix — use include (eager loading):</strong>
+          <pre><code class="language-javascript">const orders = await prisma.order.findMany({
+  include: { user: true }
+});
+// Just 1 query with a JOIN! 🚀</code></pre>
+        </div>
+        <aside class="notes">The N+1 problem is the #1 performance issue in ORM-based apps. If you have 100 orders, the bad version makes 101 database queries. The fixed version makes just 1. AI generates the bad version surprisingly often because it writes procedural-style code.</aside>
+      </section>
+
+      <section>
+        <h2>Pitfall 2: Missing Indexes</h2>
+        <div class="antipattern">
+          <strong>❌ No index on frequently queried field:</strong>
+          <pre><code class="language-prisma">model Product {
+  id         Int    @id @default(autoincrement())
+  name       String
+  categoryId Int    // Queried often, but no index!
+  price      Float
+}</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Add indexes for query performance:</strong>
+          <pre><code class="language-prisma">model Product {
+  id         Int      @id @default(autoincrement())
+  name       String
+  categoryId Int
+  price      Float
+  category   Category @relation(fields: [categoryId], references: [id])
+
+  @@index([categoryId])
+  @@index([price])
+}</code></pre>
+        </div>
+        <aside class="notes">Without an index, the database does a full table scan for every query on that field. AI tools rarely add indexes unless you explicitly ask. For any field used in WHERE, ORDER BY, or JOIN — add an index.</aside>
+      </section>
+
+      <section>
+        <h2>Pitfall 3: Improper Relationships</h2>
+        <div class="antipattern">
+          <strong>❌ Storing related data as comma-separated string:</strong>
+          <pre><code class="language-prisma">model Product {
+  id    Int    @id @default(autoincrement())
+  name  String
+  tags  String // "electronics,sale,featured" 😱
+}</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Use a proper many-to-many relationship:</strong>
+          <pre><code class="language-prisma">model Product {
+  id   Int   @id @default(autoincrement())
+  name String
+  tags Tag[]
+}
+
+model Tag {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+}</code></pre>
+        </div>
+        <aside class="notes">This is a surprisingly common AI output, especially when asked to "add tags to products." A comma-separated string means you can't query by tag, can't enforce uniqueness, and can't count products per tag efficiently.</aside>
+      </section>
+
+      <section>
+        <h2>Pitfall 4: No Connection Pooling</h2>
+        <div class="antipattern">
+          <strong>❌ Creating a new client per request:</strong>
+          <pre><code class="language-javascript">app.get('/api/products', async (req, res) => {
+  const prisma = new PrismaClient(); // ❌ New connection each request!
+  const products = await prisma.product.findMany();
+  res.json(products);
+  // Connection never closed — memory leak!
+});</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Single shared client instance:</strong>
+          <pre><code class="language-javascript">// Create ONE client at app startup
+const prisma = new PrismaClient();
+
+app.get('/api/products', async (req, res) => {
+  const products = await prisma.product.findMany();
+  res.json(products);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  await prisma.$disconnect();
+});</code></pre>
+        </div>
+        <aside class="notes">Databases have a limited number of connections. Creating a new client per request will exhaust the connection pool and crash your app under load. Prisma handles connection pooling internally — you just need one client instance.</aside>
+      </section>
+
+      <!-- ============ PART 9: DATA VALIDATION ============ -->
+      <section>
+        <h2>Part 9</h2>
+        <h1>Data Validation</h1>
+        <h3>Client + Server</h3>
+        <aside class="notes">Data validation must happen on BOTH the client and server. Client-side for UX, server-side for security. Never trust data from the browser.</aside>
+      </section>
+
+      <section>
+        <h2>Validation Strategy</h2>
+        <pre><code class="plaintext">Browser (UX)           Server (Security)         Database (Integrity)
+┌──────────────┐      ┌──────────────────┐      ┌─────────────────┐
+│ HTML5 attrs  │      │ Zod / Joi schema │      │ NOT NULL        │
+│ React forms  │ ───► │ Express middleware│ ───► │ UNIQUE          │
+│ Instant      │      │ Sanitize input   │      │ CHECK           │
+│ feedback     │      │ Reject bad data  │      │ Foreign keys    │
+└──────────────┘      └──────────────────┘      └─────────────────┘
+
+All three layers are needed. Never rely on just one.</code></pre>
+        <aside class="notes">The browser layer can be bypassed with curl or Postman. The database layer is your last line of defense but gives bad error messages. The server layer is where most of your validation logic should live.</aside>
+      </section>
+
+      <section>
+        <h2>Server Validation with Zod</h2>
+        <pre><code class="language-javascript">import { z } from 'zod';
+
+const ProductSchema = z.object({
+  name: z.string().min(2).max(100),
+  price: z.number().positive().max(99999),
+  categoryId: z.number().int().positive(),
+  description: z.string().max(1000).optional(),
+});
+
+app.post('/api/products', async (req, res) => {
+  // Validate request body
+  const result = ProductSchema.safeParse(req.body);
+
+  if (!result.success) {
+    return res.status(400).json({
+      error: 'Validation failed',
+      details: result.error.issues
+    });
+  }
+
+  const product = await prisma.product.create({
+    data: result.data  // Only validated data reaches the DB
+  });
+  res.status(201).json(product);
+});</code></pre>
+        <aside class="notes">Zod gives you runtime type checking in JavaScript. The safeParse method returns either success with validated data, or failure with descriptive error messages. This is the recommended pattern for all API endpoints.</aside>
+      </section>
+
+      <section>
+        <h2>SQL Injection — Still a Threat</h2>
+        <div class="antipattern">
+          <strong>❌ AI sometimes generates raw queries:</strong>
+          <pre><code class="language-javascript">// NEVER do this!
+app.get('/api/search', async (req, res) => {
+  const { query } = req.query;
+  const results = await prisma.$queryRawUnsafe(
+    `SELECT * FROM products WHERE name LIKE '%${query}%'`
+  );
+  // Input: ' OR 1=1 -- 💀
+});</code></pre>
+        </div>
+        <div class="ai-box">
+          <strong>✅ Use parameterized queries or the ORM:</strong>
+          <pre><code class="language-javascript">// Option 1: Prisma ORM (preferred)
+const results = await prisma.product.findMany({
+  where: { name: { contains: query } }
+});
+
+// Option 2: Parameterized raw query
+const results = await prisma.$queryRaw`
+  SELECT * FROM products WHERE name LIKE ${'%' + query + '%'}
+`;</code></pre>
+        </div>
+        <aside class="notes">SQL injection is one of the oldest web vulnerabilities and it's still in the OWASP Top 10. AI-generated code sometimes uses raw queries when the ORM API would work fine. Always prefer the ORM. If you must use raw SQL, always use parameterized queries.</aside>
+      </section>
+
+      <!-- ============ RECAP ============ -->
+      <section>
+        <h2>Key Takeaways</h2>
+        <ol>
+          <li>Use <strong>SQLite</strong> for dev, <strong>PostgreSQL</strong> for production</li>
+          <li><strong>Prisma</strong> = schema-first ORM with great DX</li>
+          <li>Always review AI-generated schemas for relationships &amp; types</li>
+          <li>Watch for <strong>N+1 queries</strong> — use <code>include</code></li>
+          <li><strong>Context API</strong> for global state, <strong>Zustand</strong> for more</li>
+          <li>Validate on <strong>client</strong> (UX) and <strong>server</strong> (security)</li>
+          <li>Never trust AI with <strong>raw SQL</strong> — check for injection</li>
+        </ol>
+        <aside class="notes">Summarize the key points before the exercise. Emphasize that AI is a great starting point for database code, but critical review is essential.</aside>
+      </section>
+
+      <!-- ============ EXERCISE INTRO ============ -->
+      <section>
+        <h2>🛠️ In-Class Exercise</h2>
+        <h3>Prisma + Express: E-Commerce API</h3>
+        <ol>
+          <li>Clone the starter project</li>
+          <li>Use AI to extend the Prisma schema</li>
+          <li>Generate seed data</li>
+          <li>Implement CRUD endpoints</li>
+          <li>Find &amp; fix N+1 queries in <code>slow-queries.js</code></li>
+        </ol>
+        <p class="small">See <code>exercise/README.md</code> for full instructions</p>
+        <aside class="notes">Walk through the exercise README. Students should work individually but can discuss with neighbors. Circulate to help with Prisma setup issues, which are common on first use.</aside>
+      </section>
+
+      <!-- ============ HOMEWORK PREVIEW ============ -->
+      <section>
+        <h2>📝 Homework 4 Preview</h2>
+        <h3>Persistent Full-Stack App</h3>
+        <ul>
+          <li>Extend HW3 with real database (SQLite + Prisma)</li>
+          <li>AI-generated migrations and seed data</li>
+          <li>Client + server validation</li>
+          <li>Fix 4 bugs in the <code>broken-db-app</code> starter code</li>
+          <li><strong>Due:</strong> Before next class (Week 5)</li>
+        </ul>
+        <p class="small">See <code>homework/README.md</code> for full details</p>
+        <aside class="notes">Preview the homework so students can start planning. The broken-db-app has intentional bugs they need to find and fix. Each bug demonstrates a real-world issue covered in tonight's lecture.</aside>
+      </section>
+
+      <!-- ============ NEXT WEEK ============ -->
+      <section>
+        <h2>Next Week: Week 5</h2>
+        <h3>Data Persistence Deep Dive</h3>
+        <ul>
+          <li>Advanced Prisma patterns</li>
+          <li>Entity Framework with .NET (server-side alternative)</li>
+          <li>Flat files, JSON storage, and caching strategies</li>
+          <li>Database deployment on Azure</li>
+        </ul>
+        <p><strong>Read ahead:</strong> <a href="https://www.prisma.io/docs/orm">Prisma ORM Docs</a></p>
+        <aside class="notes">Week 5 continues the database theme with more advanced patterns and deployment. Encourage students to read the Prisma docs, especially the relations section.</aside>
+      </section>
+
+      <!-- ============ END ============ -->
+      <section>
+        <h1>Questions?</h1>
+        <p>Office Hours: Thursday &amp; Friday, 1–2 PM via Discord</p>
+        <p class="small">bodonne3@depaul.edu · Discord: CSC 436 Server</p>
+        <aside class="notes">Open the floor for questions. Common questions will be about Prisma setup, when to use Context vs Zustand, and SQLite vs PostgreSQL differences.</aside>
+      </section>
+
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/reveal.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/plugin/notes/notes.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/reveal.js/4.6.1/plugin/highlight/highlight.min.js"></script>
+  <script>
+    Reveal.initialize({
+      hash: true,
+      slideNumber: 'c/t',
+      showSlideNumber: 'all',
+      plugins: [RevealNotes, RevealHighlight],
+      transition: 'slide',
+      width: 1280,
+      height: 720,
+    });
+  </script>
+</body>
+</html>
