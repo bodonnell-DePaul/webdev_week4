@@ -1,0 +1,67 @@
+// Prisma schema for CSC 436 Week 4 Exercise
+// This is a STARTER schema — students will extend it using AI tools
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// --- Starter Models ---
+// TODO: Students will add User, OrderItem models and extend these
+
+model Category {
+  id       Int       @id @default(autoincrement())
+  name     String    @unique
+  products Product[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Product {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String?
+  price       Float    // NOTE: Should this be Float? Discuss in class!
+  stock       Int      @default(0)
+
+  category   Category @relation(fields: [categoryId], references: [id])
+  categoryId Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([categoryId])
+}
+
+model Order {
+  id        Int      @id @default(autoincrement())
+  total     Float    // NOTE: Should this be Float? Discuss in class!
+  status    String   @default("pending") // NOTE: Should this be an enum?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// TODO: Add the following models using AI assistance:
+//
+// 1. User model
+//    - id, email (unique), name, password, createdAt
+//    - One user has many orders
+//
+// 2. OrderItem model
+//    - id, quantity, unitPrice
+//    - Belongs to an Order
+//    - References a Product
+//
+// 3. Update Order model
+//    - Add relation to User (userId foreign key)
+//    - Add relation to OrderItem[]
+//    - Change status to an OrderStatus enum
+//    - Change total from Float to Decimal
+//
+// 4. Add @@index on all foreign key fields

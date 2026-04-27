@@ -1,0 +1,21 @@
+{
+  "name": "week04-exercise",
+  "version": "1.0.0",
+  "description": "CSC 436 Week 4 Exercise: Prisma + Express E-Commerce API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "seed": "node prisma/seed.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.9.0",
+    "express": "^4.21.0"
+  },
+  "devDependencies": {
+    "prisma": "^6.9.0"
+  }
+}
