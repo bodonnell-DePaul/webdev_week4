@@ -154,22 +154,61 @@ The practical rule for students:
 
 ---
 
-## ORMs, Prisma, and the Role of a Schema
+## ORMs, Entity Framework Core, and the Role of the Model
 
 An ORM is a boundary between application code and the database. It lets developers work with language-level objects while still relying on a database underneath.
 
-Prisma is useful in this course because its schema file becomes a readable design artifact. Students and AI tools can inspect it and discuss the system at a higher level than raw SQL strings.
+Entity Framework Core is the ORM for the ASP.NET Core backend in this course. It fits naturally with the .NET stack students used in Week 3: C# classes represent domain entities, a `DbContext` represents a database session and unit of work, and LINQ queries describe what data the backend needs.
 
-The Prisma schema communicates:
+With EF Core, the model is communicated through:
 
-- The main entities in the domain.
-- Fields and data types.
-- Required versus optional data.
-- Relationships between records.
-- Unique constraints and indexes.
-- How the application expects the database to evolve.
+- C# entity classes such as `Project`, `Feature`, `User`, or `Order`.
+- A `DbContext` class with `DbSet<T>` properties for durable collections.
+- Data annotations or Fluent API configuration for required fields, relationships, indexes, and delete behavior.
+- EF Core migrations that describe how the database changes over time.
 
-Students do not need to memorize every Prisma syntax detail. They do need to understand what a generated schema means and whether it matches the domain.
+Students do not need to memorize every EF Core method. They do need to understand what the entity model means, how relationships are represented, and whether generated code matches the domain.
+
+### EF Core Mental Model
+
+An ASP.NET Core API using EF Core usually has these pieces:
+
+```text
+Entity classes
+  C# classes that represent durable domain records
+
+DbContext
+  The EF Core gateway to the database and tracked changes
+
+LINQ queries
+  C# expressions that EF Core translates into SQL
+
+Migrations
+  Versioned database schema changes generated from model changes
+
+Database provider
+  SQLite for local development, SQL Server or PostgreSQL for production
+```
+
+Example shape, conceptually:
+
+```csharp
+public class Project
+{
+    public int Id { get; set; }
+    public required string Name { get; set; }
+    public required string Problem { get; set; }
+    public List<Feature> Features { get; set; } = [];
+}
+
+public class AppDbContext : DbContext
+{
+    public DbSet<Project> Projects => Set<Project>();
+    public DbSet<Feature> Features => Set<Feature>();
+}
+```
+
+The code is not important because of the syntax. It is important because it reveals the architecture: projects are durable records, features are related records, and the backend has a structured persistence boundary.
 
 ### Migrations as Versioned Architecture
 
@@ -182,6 +221,17 @@ Important migration habits:
 - Give migrations meaningful names that describe the design change.
 - Keep seed data separate from schema changes.
 - Test the application from a fresh database, not only from a database that already happens to work on your machine.
+
+Common EF Core commands:
+
+```bash
+dotnet ef migrations add InitialCreate
+dotnet ef database update
+dotnet ef migrations add AddFeatureStatus
+dotnet ef database update
+```
+
+The key idea is not the command syntax. The key idea is that model changes and database changes must move together.
 
 ---
 
@@ -215,6 +265,256 @@ Database-backed APIs need clear outcomes:
 - `500 Internal Server Error` for unexpected server failures.
 
 Students should read AI-generated endpoints and ask: "What does this endpoint promise, and how does the client know what happened?"
+
+---
+
+## Connecting React to the Backend API
+
+Weeks 2 and 3 introduced the two halves of a full-stack app: React renders the user interface, and the backend exposes resources over HTTP. Week 4 connects those halves to durable data.
+
+The important architectural idea is that React does not talk to the database. React talks to the API. The API talks to the database. That boundary keeps the frontend focused on user workflows and keeps persistence rules on the server.
+
+```text
+React component
+  owns UI state and calls an API helper
+
+API helper
+  sends HTTP requests and normalizes loading/error behavior
+
+ASP.NET Core endpoint
+  validates the request and applies business rules
+
+EF Core DbContext
+  reads or writes durable data
+
+Database
+  enforces relationships and constraints
+```
+
+### Development Topology
+
+In development, the frontend and backend usually run as two separate processes:
+
+| Process | Example URL | Responsibility |
+| --- | --- | --- |
+| React dev server | `http://localhost:5173` | Serves the UI, supports hot reload, proxies or calls APIs |
+| ASP.NET Core API | `http://localhost:5000` or `https://localhost:7000` | Handles HTTP resources, validation, persistence, and errors |
+| Database | Local SQLite file or database server | Stores durable state |
+
+Because the frontend and backend run on different origins, the browser enforces CORS. This is not a React problem and not a database problem. It is a browser security rule: JavaScript loaded from one origin cannot freely call another origin unless the backend allows it.
+
+Students should understand this common debugging pattern:
+
+- If the request works in Postman or curl but fails in the browser, suspect CORS.
+- If the browser says `Failed to fetch`, check whether the API is running and whether CORS allows the frontend origin.
+- If the response is `400`, `404`, or `500`, the request reached the API and should be debugged as an API contract or server problem.
+
+### The Frontend Should Depend on an API Contract
+
+React components should not be designed around database tables. They should be designed around user tasks and API response shapes.
+
+For example, a project dashboard screen probably wants one response that already contains:
+
+- The selected project.
+- Its features grouped or labeled by layer.
+- Recent design decisions.
+- Summary counts for the dashboard.
+
+The database may store that information in several tables, but the component should not have to know the join strategy. The backend can shape the JSON response for the screen while keeping database details private.
+
+This is the design distinction:
+
+| Concern | Frontend question | Backend question |
+| --- | --- | --- |
+| Resource shape | What data does this screen need? | What query or aggregation produces that shape? |
+| Validation | How do we help the user fix input? | What input must be rejected before persistence? |
+| Error handling | What should the user see? | Which status code and JSON error should be returned? |
+| State ownership | Is this local interaction or saved domain data? | Is this request allowed to change durable state? |
+
+### Why Use Axios Instead of JavaScript Fetch?
+
+JavaScript has a built-in `fetch` API, and it is perfectly capable for simple requests. In class projects, Axios is often a better teaching and development tool because it gives students a cleaner API boundary and fewer repetitive details.
+
+Axios advantages:
+
+- It automatically parses JSON responses.
+- It treats non-2xx HTTP status codes as errors, which makes error handling more consistent.
+- It lets you create a configured API client with a shared `baseURL`.
+- It supports request and response interceptors for auth headers, logging, and centralized error handling.
+- It has convenient helpers such as `axios.get`, `axios.post`, `axios.patch`, and `axios.delete`.
+- It handles request bodies and headers with less repeated boilerplate.
+
+The important teaching point is not that `fetch` is bad. The point is that a real frontend should have an organized HTTP client layer. Axios makes that layer easier for students to see.
+
+| Concern | `fetch` default | Axios default |
+| --- | --- | --- |
+| JSON parsing | Must call `response.json()` | Response data is available on `response.data` |
+| Error status handling | `404` and `500` do not throw automatically | Non-2xx responses reject the promise |
+| Base URL | Usually repeated or manually wrapped | Built into an Axios instance |
+| Shared behavior | Custom wrapper required | Interceptors are built in |
+| Teaching clarity | More low-level browser API details | Cleaner service-layer examples |
+
+### Where Axios Belongs in a React App
+
+Axios should not be scattered directly through every component. Put it behind a small API layer so components talk to application concepts instead of HTTP mechanics.
+
+Recommended structure:
+
+```text
+src/
+  api/
+    client.js          shared Axios instance
+    projectsApi.js     project-specific API functions
+  components/
+  App.jsx
+```
+
+`client.js` creates the configured HTTP client:
+
+```javascript
+import axios from 'axios';
+
+export const apiClient = axios.create({
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+```
+
+`projectsApi.js` gives the rest of the app named operations:
+
+```javascript
+import { apiClient } from './client';
+
+export async function getProjects() {
+  const response = await apiClient.get('/projects');
+  return response.data;
+}
+
+export async function createFeature(projectId, feature) {
+  const response = await apiClient.post(`/projects/${projectId}/features`, feature);
+  return response.data;
+}
+
+export async function updateFeatureStatus(featureId, status) {
+  const response = await apiClient.patch(`/features/${featureId}/status`, { status });
+  return response.data;
+}
+```
+
+Then React components call domain-specific functions:
+
+```javascript
+useEffect(() => {
+  async function loadProjects() {
+    try {
+      setLoading(true);
+      setProjects(await getProjects());
+    } catch (error) {
+      setError(error.response?.data?.message || 'Unable to load projects');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  loadProjects();
+}, []);
+```
+
+This keeps components focused on UI state: loading, error, selected project, form draft, and display. The API layer owns HTTP details: base URLs, endpoints, methods, and response parsing.
+
+### Fetching Data in React With Axios
+
+When React gets data from an API, the component has to represent more than just the data. It also has to represent the state of the request.
+
+Every API-backed screen needs answers to these questions:
+
+- What should the user see while the request is loading?
+- What should happen if the request fails?
+- What should happen if the API returns an empty list?
+- How should the screen refresh after a successful create, update, or delete?
+- Should the UI wait for the server, or show an optimistic change first?
+
+The common pattern is:
+
+1. Component renders with initial loading state.
+2. Component calls an API helper after it appears on screen.
+3. API helper sends a request to the backend.
+4. Backend validates, queries the database, and returns JSON.
+5. Component stores the returned server state and renders it.
+6. If the user changes durable data, the frontend sends a mutation request and then refreshes or reconciles server state.
+
+Students do not need to memorize a single perfect implementation pattern. They do need to recognize that API calls are asynchronous and can fail. AI-generated React code often forgets loading states, error states, empty states, or refresh behavior after writes.
+
+### Sending Form Data to the ASP.NET Core Backend
+
+Forms are where temporary UI state becomes durable state.
+
+Before submit:
+
+- The user is editing local React state.
+- The database has not changed.
+- The app can provide immediate client-side feedback.
+
+On submit:
+
+- React sends JSON to the ASP.NET Core API with Axios.
+- The API binds the JSON body to a C# request DTO.
+- The API validates the request body.
+- Application logic decides whether the operation is allowed.
+- EF Core writes the accepted change to the database.
+- The API returns either a success response or a structured error.
+
+After submit:
+
+- The frontend clears or preserves the form depending on the outcome.
+- The frontend refreshes the affected server state.
+- The user sees either the saved result or a useful error.
+
+This is why validation appears in multiple places. Client validation helps the user. Server validation protects the system. Database constraints protect the data if application code misses something.
+
+### Environment and Configuration
+
+React code needs to know where the API lives. Hard-coding an API URL can work in a small demo, but students should understand that the value changes by environment.
+
+| Environment | Frontend API target |
+| --- | --- |
+| Local development | `http://localhost:5000/api` or `https://localhost:7000/api` |
+| Deployed frontend and API together | Often a relative path such as `/api` |
+| Deployed separately | A configured public API URL |
+
+The architectural principle is simple: configuration should change between environments without rewriting components. The React app should have one Axios client and one API layer rather than scattered HTTP calls with repeated URLs throughout the component tree.
+
+### Common AI Mistakes When Connecting React and APIs
+
+When students use AI to connect the frontend to the backend, they should watch for:
+
+- Axios calls copied into many components instead of organized behind a small API helper.
+- Components that assume the API always succeeds.
+- No loading, empty, or error states.
+- Form submissions that do not refresh the saved server state.
+- Frontend code that sends fields the API does not accept.
+- Backend code that returns a shape different from what the frontend expects.
+- CORS fixes attempted in React instead of on the server.
+- Secrets or database connection strings placed in frontend code.
+
+The final point is critical: anything bundled into React is visible to users. A React app can contain a public API base URL. It must not contain database credentials, private API keys, or server secrets.
+
+### How the Demo Shows This Connection
+
+The runnable Week 4 demo uses this flow:
+
+1. Vite serves the React UI.
+2. The frontend API layer uses Axios to load projects and summary data from ASP.NET Core.
+3. ASP.NET Core returns project-shaped JSON that includes related features and decisions.
+4. React keeps form drafts and selected project ID as UI state.
+5. When a feature or decision is submitted, React sends JSON to the API with Axios.
+6. ASP.NET Core binds and validates the request DTO.
+7. EF Core writes the accepted data to SQLite.
+8. React reloads the server state so the saved data appears on screen.
+
+That flow is the bridge from Week 2 to Week 3 to Week 4: component state becomes an HTTP request, the API applies rules, and the database preserves the result.
 
 ---
 
@@ -319,7 +619,7 @@ Example prompts for students:
 
 > I am building a course project planner with projects, features, and design decisions. Before writing code, identify the durable entities, relationships, constraints, and likely API resources. Explain your assumptions.
 
-> Review this Prisma schema as an architect. Look for missing constraints, weak relationships, unclear ownership, bad data types, missing indexes, and places where the model does not match the domain.
+> Review this EF Core entity model as an architect. Look for missing constraints, weak relationships, unclear ownership, bad data types, missing indexes, and places where the model does not match the domain.
 
 > Generate seed data that demonstrates realistic relationships and edge cases. Include enough records to test filtering, empty states, and status changes.
 
@@ -335,18 +635,20 @@ The demo is intentionally small, but it combines the concepts from Weeks 1-4:
 
 - HTML, CSS, and JavaScript as the browser foundation.
 - React components, controlled forms, reducer-based UI state, and derived display state.
-- REST endpoints, HTTP methods, status codes, JSON responses, and CORS.
-- Prisma schema design, SQLite persistence, relationships, seed data, validation, and simple server-side caching.
+- React-to-API communication with Axios, loading, error, refresh, and mutation flows.
+- ASP.NET Core REST endpoints, HTTP methods, status codes, JSON responses, and CORS.
+- EF Core model design, SQLite persistence, relationships, seed data, validation, and simple server-side caching.
 
 Suggested classroom flow:
 
 1. Start by reading the README and the architecture diagram.
 2. Ask students to identify which state is UI state and which state is durable state.
-3. Inspect the Prisma schema as a design artifact before running the app.
-4. Run the app and add a feature from the React UI.
-5. Refresh the browser and show that the feature persists.
-6. Send an invalid request and inspect the API error.
-7. Ask AI to propose one schema improvement, then evaluate the suggestion as a class.
+3. Inspect the EF Core entity classes and `DbContext` as design artifacts before running the app.
+4. Trace the first page load from React to Axios to ASP.NET Core to EF Core to SQLite and back.
+5. Add a feature from the React UI and identify when local form state becomes durable state.
+6. Refresh the browser and show that the feature persists.
+7. Send an invalid request and inspect the API error.
+8. Ask AI to propose one schema or API-contract improvement, then evaluate the suggestion as a class.
 
 The goal is not to teach every line of implementation. The goal is for students to see how the layers cooperate and where architectural judgment is required.
 
@@ -358,6 +660,7 @@ The goal is not to teach every line of implementation. The goal is for students 
 - If two users are using the app at the same time, what assumptions break?
 - Which database constraints would protect your app from invalid AI-generated endpoint code?
 - Which parts of the app should the frontend own, and which parts should the backend own?
+- What changes when a React component gets data from an API instead of a local array?
 - What would make an AI-generated schema look correct but fail in production?
 - How would you explain the difference between API design and database design to a nontechnical stakeholder?
 
