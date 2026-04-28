@@ -1,0 +1,284 @@
+:root {
+  color: #1f2933;
+  background: #f6f7f9;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+select {
+  cursor: pointer;
+}
+
+.app-shell {
+  width: min(1280px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 28px 0 48px;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+h1,
+h2,
+h3,
+h4,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 0;
+  font-size: clamp(2rem, 5vw, 3.25rem);
+  letter-spacing: 0;
+}
+
+h2 {
+  font-size: 1.15rem;
+}
+
+.eyebrow {
+  margin-bottom: 6px;
+  color: #56616f;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.ghost-button,
+button[type="submit"] {
+  border: 0;
+  border-radius: 6px;
+  background: #245c73;
+  color: white;
+  font-weight: 700;
+  padding: 10px 14px;
+}
+
+.notice {
+  border: 1px solid #d7dde4;
+  border-radius: 6px;
+  background: white;
+  padding: 12px 14px;
+}
+
+.error,
+.inline-error {
+  color: #9f1239;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summary-card,
+.project-list,
+.project-panel,
+.panel-section,
+.feature-card,
+.decision {
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: white;
+}
+
+.summary-card {
+  padding: 14px;
+}
+
+.summary-card span {
+  display: block;
+  color: #56616f;
+  font-size: 0.85rem;
+}
+
+.summary-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 1.55rem;
+}
+
+.summary-card.wide {
+  grid-column: span 2;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 72px 1fr 32px;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.bar-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e6eaee;
+}
+
+.bar-track div {
+  height: 100%;
+  border-radius: inherit;
+  background: #2f7d6d;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 18px;
+  align-items: start;
+}
+
+.project-list {
+  padding: 14px;
+  position: sticky;
+  top: 16px;
+}
+
+.project-button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  padding: 10px;
+  text-align: left;
+}
+
+.project-button.selected {
+  border-color: #9cc2bd;
+  background: #edf8f5;
+}
+
+.project-button small,
+.audience {
+  color: #56616f;
+}
+
+.project-panel {
+  padding: 14px;
+}
+
+.panel-section {
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.feature-column {
+  min-width: 0;
+}
+
+.feature-card {
+  padding: 14px;
+  margin-top: 10px;
+}
+
+.card-header,
+.form-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-header h4 {
+  margin-bottom: 0;
+}
+
+.card-header span {
+  border-radius: 999px;
+  background: #eef0f3;
+  padding: 4px 8px;
+  color: #374151;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+form {
+  display: grid;
+  gap: 10px;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  border: 1px solid #c9d1d9;
+  border-radius: 6px;
+  background: white;
+  color: #1f2933;
+  padding: 10px 12px;
+}
+
+textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.two-column,
+.decision-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(320px, 1fr);
+  gap: 18px;
+}
+
+.decision {
+  padding: 14px;
+  margin-top: 10px;
+}
+
+.decision p:last-child,
+.feature-card p:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .summary-grid,
+  .workspace,
+  .feature-grid,
+  .two-column,
+  .decision-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card.wide {
+    grid-column: auto;
+  }
+
+  .project-list {
+    position: static;
+  }
+}
