@@ -60,9 +60,15 @@ app.MapPost("/api/projects", async (CreateProjectRequest request, AppDbContext d
         return Results.BadRequest(new ApiError("Project name must be at least 3 characters."));
     }
 
+    if (string.IsNullOrWhiteSpace(request.Description) || request.Description.Length < 10)
+    {
+        return Results.BadRequest(new ApiError("Project description must be at least 10 characters."));
+    }
+
     var project = new Project
     {
         Name = request.Name.Trim(),
+        Description = request.Description.Trim(),
         Problem = request.Problem.Trim(),
         Audience = request.Audience.Trim(),
         Status = ProjectStatus.DISCOVERY
@@ -186,6 +192,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Project>()
+            .Property(project => project.Description)
+            .IsRequired();
+
+        modelBuilder.Entity<Project>()
             .HasIndex(project => project.Name)
             .IsUnique();
 
@@ -204,6 +214,7 @@ public sealed class Project
 {
     public int Id { get; set; }
     public required string Name { get; set; }
+    public required string Description { get; set; }
     public required string Problem { get; set; }
     public required string Audience { get; set; }
     public ProjectStatus Status { get; set; }
@@ -245,7 +256,7 @@ public enum FeatureLayer { UI, API, DATA }
 public enum FeatureStatus { IDEA, READY, BLOCKED, DONE }
 public enum Priority { LOW, MEDIUM, HIGH }
 
-public sealed record CreateProjectRequest(string Name, string Problem, string Audience);
+public sealed record CreateProjectRequest(string Name, string Description, string Problem, string Audience);
 public sealed record CreateFeatureRequest(string Title, string Description, FeatureLayer Layer, Priority Priority);
 public sealed record UpdateFeatureStatusRequest(FeatureStatus Status);
 public sealed record CreateDecisionRequest(string Title, string Context, string Choice, string Consequence);
@@ -254,6 +265,7 @@ public sealed record ApiError(string Message);
 public sealed record ProjectDto(
     int Id,
     string Name,
+    string Description,
     string Problem,
     string Audience,
     ProjectStatus Status,
@@ -263,6 +275,7 @@ public sealed record ProjectDto(
     public static ProjectDto From(Project project) => new(
         project.Id,
         project.Name,
+        project.Description,
         project.Problem,
         project.Audience,
         project.Status,
@@ -301,6 +314,7 @@ public static class SeedData
             new Project
             {
                 Name = "Campus Project Studio",
+                Description = "A planning workspace where student teams define scope, architecture, and delivery priorities.",
                 Problem = "Student teams need a shared place to turn ideas into scoped web app plans.",
                 Audience = "CSC 436 project teams",
                 Status = ProjectStatus.DESIGN,
@@ -319,6 +333,7 @@ public static class SeedData
             new Project
             {
                 Name = "Volunteer Match Board",
+                Description = "A lightweight board that helps campus organizations post opportunities and students discover them.",
                 Problem = "Campus organizations need a lightweight way to post volunteer opportunities.",
                 Audience = "Student organizations and volunteers",
                 Status = ProjectStatus.DISCOVERY,
